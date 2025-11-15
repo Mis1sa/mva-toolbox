@@ -1,8 +1,6 @@
 # MVA Toolbox
 
-`com.misisa.mva-toolbox`
-
-MVA Toolbox 是由 Misisa 编写的一组 Avatar 工具，目前包含 **Avatar Quick Toggle (AQT)**，用于快速为 VRChat Avatars 生成 FX Layer、参数和表情菜单开关。
+`com.mis1sa.mva-toolbox`
 
 ## 主要特性（当前）
 

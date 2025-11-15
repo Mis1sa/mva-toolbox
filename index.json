@@ -13,7 +13,7 @@
           "description": "Avatar tools for VRChat by Mis1sa, including Avatar Quick Toggle (AQT).",
           "unity": "2022.3",
           "license": "MIT",
-          "url": "https://github.com/Mis1sa/mva-toolbox/archive/refs/heads/main.zip",
+          "url": "https://github.com/Mis1sa/mva-toolbox/releases/download/V0.0.1/com.mis1sa.mva-toolbox-0.0.1.zip",
           "legacyFolders": {},
           "vpmDependencies": {
             "com.vrchat.avatars": ">=3.2.0",

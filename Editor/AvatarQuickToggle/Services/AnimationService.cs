@@ -1,0 +1,685 @@
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using MVA.Toolbox.Public;
+using TargetItem = MVA.Toolbox.AvatarQuickToggle.ToggleConfig.TargetItem;
+using IntStateGroup = MVA.Toolbox.AvatarQuickToggle.ToggleConfig.IntStateGroup;
+
+namespace MVA.Toolbox.AvatarQuickToggle.Services
+{
+    public class AnimationService
+    {
+        public void CreateLayer(AnimatorController controller, MVA.Toolbox.AvatarQuickToggle.ToggleConfig config, int? insertIndex = null)
+        {
+            if (controller == null || config?.config == null) return;
+            var data = config.config;
+            var root = config.avatar != null ? config.avatar.gameObject : null;
+            if (root == null) return;
+
+            // 解析 Write Defaults 设置：当为 Auto(0) 时，根据现有 FX 层的状态推导出 ON(1)/OFF(2)
+            int writeDefaults = data.writeDefaultSetting;
+            if (writeDefaults == 0)
+            {
+                writeDefaults = ResolveAutoWriteDefaults(controller);
+            }
+
+            var layers = controller.layers.ToList();
+            int existingIndex = layers.FindIndex(l => l.name == data.layerName);
+            if (existingIndex >= 0)
+            {
+                if (data.overwriteLayer)
+                {
+                    // 覆盖层级：删除同名层，并默认在原位置插回新层
+                    layers.RemoveAt(existingIndex);
+                    if (!insertIndex.HasValue)
+                    {
+                        insertIndex = existingIndex;
+                    }
+                }
+                else
+                {
+                    // 不覆盖层级：为当前层级生成唯一名称，采用 [层级名]_[序号] 规则（例如 Cloth, Cloth_1, Cloth_2 ...）
+                    var existingNames = new HashSet<string>(layers.Select(l => l.name));
+                    string baseName = data.layerName;
+                    if (existingNames.Contains(baseName))
+                    {
+                        int suffix = 1;
+                        string candidate;
+                        do
+                        {
+                            candidate = $"{baseName}_{suffix}";
+                            suffix++;
+                        } while (existingNames.Contains(candidate));
+
+                        data.layerName = candidate;
+                    }
+                }
+            }
+
+            EnsureAnimatorParameter(controller, data);
+
+            AnimatorControllerLayer layer = null;
+            switch (data.layerType)
+            {
+                case 0:
+                    layer = CreateBoolLayer(controller, data, root, writeDefaults);
+                    break;
+                case 1:
+                    layer = CreateIntLayer(controller, data, root, writeDefaults);
+                    break;
+                case 2:
+                    layer = CreateFloatLayer(controller, data, root, writeDefaults);
+                    break;
+            }
+
+            if (layer == null) return;
+            layer.defaultWeight = 1f;
+
+            if (insertIndex.HasValue && insertIndex.Value >= 0 && insertIndex.Value <= layers.Count)
+            {
+                layers.Insert(insertIndex.Value, layer);
+            }
+            else
+            {
+                layers.Add(layer);
+            }
+
+            controller.layers = layers.ToArray();
+        }
+
+        private void EnsureAnimatorParameter(AnimatorController controller, MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data)
+        {
+            if (controller == null || data == null || string.IsNullOrEmpty(data.parameterName)) return;
+
+            var desiredType = AnimatorControllerParameterType.Bool;
+            switch (data.layerType)
+            {
+                case 0:
+                    desiredType = AnimatorControllerParameterType.Bool;
+                    break;
+                case 1:
+                    desiredType = AnimatorControllerParameterType.Int;
+                    break;
+                case 2:
+                    desiredType = AnimatorControllerParameterType.Float;
+                    break;
+            }
+
+            // 查找是否已存在同名参数
+            var parameters = controller.parameters ?? System.Array.Empty<AnimatorControllerParameter>();
+            int index = -1;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                var p = parameters[i];
+                if (p != null && p.name == data.parameterName)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index >= 0)
+            {
+                // 已存在同名参数：
+                // 未勾选覆盖参数时保持原有设置不变；
+                // 勾选覆盖参数时，强制同步类型与默认值以匹配当前层配置。
+                if (!data.overwriteParameter)
+                {
+                    return;
+                }
+
+                var existing = parameters[index];
+                existing.type = desiredType;
+                switch (desiredType)
+                {
+                    case AnimatorControllerParameterType.Bool:
+                        existing.defaultBool = data.defaultStateSelection == 0;
+                        break;
+                    case AnimatorControllerParameterType.Int:
+                        existing.defaultInt = Mathf.Max(0, data.defaultIntValue);
+                        break;
+                    case AnimatorControllerParameterType.Float:
+                        existing.defaultFloat = Mathf.Clamp01(data.defaultFloatValue);
+                        break;
+                }
+
+                // 将修改写回控制器参数数组
+                parameters[index] = existing;
+                controller.parameters = parameters;
+                return;
+            }
+
+            // 不存在同名参数时，直接创建新参数
+            var parameter = new AnimatorControllerParameter
+            {
+                name = data.parameterName,
+                type = desiredType
+            };
+
+            switch (desiredType)
+            {
+                case AnimatorControllerParameterType.Bool:
+                    // Bool: 0 = OFF(false), 1 = ON(true)
+                    parameter.defaultBool = data.defaultStateSelection == 1;
+                    break;
+                case AnimatorControllerParameterType.Int:
+                    parameter.defaultInt = Mathf.Max(0, data.defaultIntValue);
+                    break;
+                case AnimatorControllerParameterType.Float:
+                    parameter.defaultFloat = Mathf.Clamp01(data.defaultFloatValue);
+                    break;
+            }
+
+            controller.AddParameter(parameter);
+        }
+
+        private AnimatorControllerLayer CreateBoolLayer(AnimatorController controller, MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, int writeDefaults)
+        {
+            var stateMachine = new AnimatorStateMachine { name = data.layerName + "_SM" };
+
+            var offState = stateMachine.AddState("Off");
+            var onState = stateMachine.AddState("On");
+            stateMachine.defaultState = offState;
+
+            offState.motion = CreateBoolAnimationClip(data, root, false);
+            onState.motion = CreateBoolAnimationClip(data, root, true);
+
+            SetWriteDefaults(offState, writeDefaults);
+            SetWriteDefaults(onState, writeDefaults);
+
+            var toOn = offState.AddTransition(onState);
+            toOn.hasExitTime = false;
+            toOn.duration = 0f;
+            toOn.AddCondition(AnimatorConditionMode.If, 0f, data.parameterName);
+
+            var toOff = onState.AddTransition(offState);
+            toOff.hasExitTime = false;
+            toOff.duration = 0f;
+            toOff.AddCondition(AnimatorConditionMode.IfNot, 0f, data.parameterName);
+
+            var layer = new AnimatorControllerLayer
+            {
+                name = data.layerName,
+                stateMachine = stateMachine
+            };
+
+            return layer;
+        }
+
+        private AnimatorControllerLayer CreateIntLayer(AnimatorController controller, MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, int writeDefaults)
+        {
+            var stateMachine = new AnimatorStateMachine { name = data.layerName + "_SM" };
+
+            var states = new List<AnimatorState>();
+            for (int i = 0; i < data.intGroups.Count; i++)
+            {
+                var group = data.intGroups[i];
+                var stateName = string.IsNullOrEmpty(group?.stateName) ? $"State {i}" : group.stateName;
+                var state = stateMachine.AddState(stateName);
+
+                // Int 动画剪辑名称：优先使用对应的菜单项名称；若为空，则使用 [最终层级名]_[索引]
+                string clipName = null;
+                if (data.intMenuItemNames != null && i < data.intMenuItemNames.Count)
+                {
+                    clipName = data.intMenuItemNames[i];
+                }
+                if (string.IsNullOrWhiteSpace(clipName))
+                {
+                    string baseName = !string.IsNullOrWhiteSpace(data.layerName) ? data.layerName : data.parameterName;
+                    clipName = $"{baseName}_{i}";
+                }
+
+                state.motion = CreateIntAnimationClip(data, group, root, clipName);
+                SetWriteDefaults(state, writeDefaults);
+                states.Add(state);
+            }
+
+            if (states.Count > 0)
+            {
+                stateMachine.defaultState = states[Mathf.Clamp(data.defaultIntValue, 0, states.Count - 1)];
+            }
+
+            for (int i = 0; i < states.Count; i++)
+            {
+                var transition = stateMachine.AddAnyStateTransition(states[i]);
+                transition.hasExitTime = false;
+                transition.duration = 0f;
+                transition.AddCondition(AnimatorConditionMode.Equals, i, data.parameterName);
+            }
+
+            return new AnimatorControllerLayer
+            {
+                name = data.layerName,
+                stateMachine = stateMachine
+            };
+        }
+
+        private AnimatorControllerLayer CreateFloatLayer(AnimatorController controller, MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, int writeDefaults)
+        {
+            var stateMachine = new AnimatorStateMachine { name = data.layerName + "_SM" };
+
+            // 先创建动画剪辑，再使用剪辑名称作为状态名
+            // Float 动画剪辑名称：与最终层级名保持一致（不再附加 "_Float" 后缀）
+            var clip = CreateFloatAnimationClip(data, root, data.layerName);
+            var state = stateMachine.AddState(clip != null ? clip.name : "Blend");
+            state.motion = clip;
+
+            // 启用 Motion Time，并使用当前层绑定的参数名驱动时间
+            // 这样 Float 参数将在 0-1 范围内直接控制剪辑的归一化时间，与原 SSG 行为一致。
+#if UNITY_2019_1_OR_NEWER
+            state.timeParameterActive = true;
+            state.timeParameter = data.parameterName;
+#endif
+            SetWriteDefaults(state, data.writeDefaultSetting);
+            stateMachine.defaultState = state;
+
+            return new AnimatorControllerLayer
+            {
+                name = data.layerName,
+                stateMachine = stateMachine
+            };
+        }
+
+        private AnimationClip CreateBoolAnimationClip(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, bool isOnState)
+        {
+            var clip = CreateBoolAnimationClipInMemory(data, root, isOnState);
+            if (clip == null) return null;
+            // NDMF 工作流下，AQT 使用临时路径 "Assets/__AQT_NDMF__/..."，此时不在磁盘下创建或保存剪辑，
+            // 仅在内存中使用，避免生成临时资源文件夹。
+            if (!string.IsNullOrEmpty(data.clipSavePath) && data.clipSavePath.StartsWith("Assets/__AQT_NDMF__/"))
+            {
+                return clip;
+            }
+
+            // 普通模式：仍按原逻辑将剪辑保存到指定路径下
+            string folderPath = ToolboxUtils.BuildAqtLayerFolder(data.clipSavePath, data.layerName);
+            return SaveAnimationClip(clip, folderPath);
+        }
+
+        private AnimationClip CreateBoolAnimationClipInMemory(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, bool isOnState)
+        {
+            var clip = new AnimationClip
+            {
+                // Bool 动画剪辑名称：使用最终层级名 + "_ON" / "_OFF"
+                name = $"{data.layerName}_{(isOnState ? "ON" : "OFF")}"
+            };
+
+            foreach (var item in data.boolTargets)
+            {
+                if (item?.targetObject == null) continue;
+                string path = ToolboxUtils.GetGameObjectPath(item.targetObject, root);
+                if (item.controlType == 0)
+                {
+                    bool activeWhenOn = item.onStateActiveSelection == 0;
+                    float value = (isOnState == activeWhenOn) ? 1f : 0f;
+                    AddGameObjectCurve(clip, path, value > 0.5f);
+                }
+                else if (item.controlType == 1 && !string.IsNullOrEmpty(item.blendShapeName))
+                {
+                    // 对 BlendShape，直接使用当前目标物体的路径写入曲线，
+                    // 让 AAO 在构建阶段根据 BlendShape 名称处理合并/重命名。
+                    bool isZeroWhenOn = item.onStateBlendShapeValue == 0;
+                    float onValue = isZeroWhenOn ? 0f : 100f;
+                    float targetValue = isOnState ? onValue : 100f - onValue;
+                    AddBlendShapeCurve(clip, path, item.blendShapeName, targetValue);
+                }
+            }
+
+            return clip;
+        }
+
+        // 仅供未来 NDMF 工作流使用：在内存中创建 Bool 动画剪辑，不保存到磁盘
+        public AnimationClip CreateBoolAnimationClipForNDMF(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, bool isOnState)
+        {
+            return CreateBoolAnimationClipInMemory(data, root, isOnState);
+        }
+
+        private AnimationClip CreateIntAnimationClip(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, IntStateGroup group, GameObject root, string clipName)
+        {
+            var clip = CreateIntAnimationClipInMemory(data, group, root, clipName);
+            if (clip == null) return null;
+
+            // NDMF 工作流下的临时路径：不创建/保存磁盘资源
+            if (!string.IsNullOrEmpty(data.clipSavePath) && data.clipSavePath.StartsWith("Assets/__AQT_NDMF__/"))
+            {
+                return clip;
+            }
+
+            // 普通模式：保存到指定路径
+            string folderPath = ToolboxUtils.BuildAqtLayerFolder(data.clipSavePath, data.layerName);
+            return SaveAnimationClip(clip, folderPath);
+        }
+
+        private AnimationClip CreateIntAnimationClipInMemory(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, IntStateGroup group, GameObject root, string clipName)
+        {
+            var clip = new AnimationClip
+            {
+                // Int 动画剪辑名称：直接使用传入的 clipName（已按菜单项名称或默认规则生成）
+                name = clipName
+            };
+
+            if (group?.targetItems != null)
+            {
+                foreach (var item in group.targetItems)
+                {
+                    if (item?.targetObject == null) continue;
+                    string path = ToolboxUtils.GetGameObjectPath(item.targetObject, root);
+                    if (item.controlType == 0)
+                    {
+                        bool activeWhenOn = item.onStateActiveSelection == 0;
+                        AddGameObjectCurve(clip, path, activeWhenOn);
+                    }
+                    else if (item.controlType == 1 && !string.IsNullOrEmpty(item.blendShapeName))
+                    {
+                        // Int 模式下也直接将曲线绑定到 TargetItem 的 GameObject 路径，
+                        // 由 AAO 在构建时处理合并/重命名。
+                        bool isZero = item.onStateBlendShapeValue == 0;
+                        float value = isZero ? 0f : 100f;
+                        AddBlendShapeCurve(clip, path, item.blendShapeName, value);
+                    }
+                }
+            }
+
+            return clip;
+        }
+
+        private AnimationClip CreateFloatAnimationClip(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, string clipName)
+        {
+            var clip = CreateFloatAnimationClipInMemory(data, root, clipName);
+            if (clip == null) return null;
+
+            // NDMF 工作流下的临时路径：不创建/保存磁盘资源
+            if (!string.IsNullOrEmpty(data.clipSavePath) && data.clipSavePath.StartsWith("Assets/__AQT_NDMF__/"))
+            {
+                return clip;
+            }
+
+            // 普通模式：保存到指定路径
+            string folderPath = ToolboxUtils.BuildAqtLayerFolder(data.clipSavePath, data.layerName);
+            return SaveAnimationClip(clip, folderPath);
+        }
+
+        private AnimationClip CreateFloatAnimationClipInMemory(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, string clipName)
+        {
+            // 按 SSG 的 CreateFloatSwitchClip：
+            // - 使用传入的 clipName（通常为 LayerName + "_Float"）作为剪辑名
+            // - 时间轴使用 0~1 归一化时间，由 Animator 的 Motion Time 控制实际时间
+            var clip = new AnimationClip
+            {
+                name = clipName
+            };
+            clip.frameRate = 60f;
+
+            foreach (var item in data.floatTargets)
+            {
+                if (item == null || item.targetObject == null) continue;
+                // Float 只支持 BlendShape 目标，若主次名称都为空则跳过
+                bool hasPrimary = !string.IsNullOrEmpty(item.blendShapeName);
+                bool hasSecondary = !string.IsNullOrEmpty(item.secondaryBlendShapeName);
+                if (!hasPrimary && !hasSecondary) continue;
+
+                // 曲线直接绑定到当前目标物体路径，由 AAO 在构建阶段根据名称处理合并/重命名
+                string path = ToolboxUtils.GetGameObjectPath(item.targetObject, root);
+
+                // 未开启二分模式：始终使用单一形变曲线（优先主，如果主为空则使用次）
+                if (!item.splitBlendShape)
+                {
+                    string shape = hasPrimary ? item.blendShapeName : item.secondaryBlendShapeName;
+                    int dir = hasPrimary ? item.onStateBlendShapeValue : item.secondaryBlendShapeValue;
+                    if (string.IsNullOrEmpty(shape)) continue;
+
+                    var binding = new EditorCurveBinding
+                    {
+                        path = path,
+                        type = typeof(SkinnedMeshRenderer),
+                        propertyName = "blendShape." + shape
+                    };
+
+                    // 两点曲线：0 -> 1，对应 SSG 中 0 -> endTime 的 EvaluateFloatWeight(dir, t)
+                    var curve = new AnimationCurve(
+                        new Keyframe(0f, EvaluateFloatWeight(dir, 0f)),
+                        new Keyframe(1f, EvaluateFloatWeight(dir, 1f))
+                    );
+                    SetLinearTangents(curve);
+                    AnimationUtility.SetEditorCurve(clip, binding, curve);
+                }
+                else
+                {
+                    // 二分模式：始终按主/次三点曲线处理
+                    // 即便 secondaryBlendShapeName 为 "无"/空，也视为"只主"的二分，不再退化为单一曲线
+                    float halfTime = 0.5f; // 归一化时间 0.5 对应 SSG 的 halfTime
+
+                    if (hasPrimary)
+                    {
+                        var primaryBinding = new EditorCurveBinding
+                        {
+                            path = path,
+                            type = typeof(SkinnedMeshRenderer),
+                            propertyName = "blendShape." + item.blendShapeName
+                        };
+                        var primaryCurve = new AnimationCurve(
+                            new Keyframe(0f, EvaluateFloatWeight(item.onStateBlendShapeValue, 0f)),
+                            new Keyframe(halfTime, EvaluateFloatWeight(item.onStateBlendShapeValue, 1f)),
+                            new Keyframe(1f, EvaluateFloatWeight(item.onStateBlendShapeValue, 1f))
+                        );
+                        SetLinearTangents(primaryCurve);
+                        AnimationUtility.SetEditorCurve(clip, primaryBinding, primaryCurve);
+                    }
+
+                    if (hasSecondary)
+                    {
+                        var secondaryBinding = new EditorCurveBinding
+                        {
+                            path = path,
+                            type = typeof(SkinnedMeshRenderer),
+                            propertyName = "blendShape." + item.secondaryBlendShapeName
+                        };
+                        var secondaryCurve = new AnimationCurve(
+                            new Keyframe(0f, EvaluateFloatWeight(item.secondaryBlendShapeValue, 0f)),
+                            new Keyframe(halfTime, EvaluateFloatWeight(item.secondaryBlendShapeValue, 0f)),
+                            new Keyframe(1f, EvaluateFloatWeight(item.secondaryBlendShapeValue, 1f))
+                        );
+                        SetLinearTangents(secondaryCurve);
+                        AnimationUtility.SetEditorCurve(clip, secondaryBinding, secondaryCurve);
+                    }
+                }
+            }
+
+            return clip;
+        }
+
+        // 评估 Float 模式下给定方向（0: 0->100, 1: 100->0）和归一化时间 t 的权重，完全对齐 SSG 的 EvaluateFloatWeight
+        private float EvaluateFloatWeight(int direction, float t)
+        {
+            t = Mathf.Clamp01(t);
+            return (direction == 0 ? t : 1f - t) * 100f;
+        }
+
+        // 将曲线关键帧切线设为线性，避免插值导致的缓入/缓出，行为对齐 SSG 的 SetLinearTangents
+        private void SetLinearTangents(AnimationCurve curve)
+        {
+            if (curve == null) return;
+
+            var keys = curve.keys;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(curve, i, AnimationUtility.TangentMode.Linear);
+                AnimationUtility.SetKeyRightTangentMode(curve, i, AnimationUtility.TangentMode.Linear);
+            }
+
+            keys = curve.keys;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                var key = keys[i];
+                if (i > 0)
+                {
+                    var prev = keys[i - 1];
+                    float dt = key.time - prev.time;
+                    key.inTangent = dt != 0f ? (key.value - prev.value) / dt : 0f;
+                }
+                if (i < keys.Length - 1)
+                {
+                    var next = keys[i + 1];
+                    float dt = next.time - key.time;
+                    key.outTangent = dt != 0f ? (next.value - key.value) / dt : 0f;
+                }
+                keys[i] = key;
+            }
+            curve.keys = keys;
+        }
+
+        private void AddGameObjectCurve(AnimationClip clip, string path, bool isActive)
+        {
+            var curve = AnimationCurve.Constant(0f, 0f, isActive ? 1f : 0f);
+            var binding = new EditorCurveBinding
+            {
+                path = path,
+                propertyName = "m_IsActive",
+                type = typeof(GameObject)
+            };
+            AnimationUtility.SetEditorCurve(clip, binding, curve);
+        }
+
+        private void AddBlendShapeCurve(AnimationClip clip, string path, string blendShapeName, float value)
+        {
+            var curve = AnimationCurve.Constant(0f, 0f, value);
+            var binding = new EditorCurveBinding
+            {
+                path = path,
+                type = typeof(SkinnedMeshRenderer),
+                propertyName = "blendShape." + blendShapeName
+            };
+            AnimationUtility.SetEditorCurve(clip, binding, curve);
+        }
+
+        private void AddFloatBlendShapeCurve(AnimationClip clip, string path, string blendShapeName, int direction, bool secondary, float startTime, float endTime, bool useWDOn)
+        {
+            float startValue = direction == 0 ? 0f : 100f;
+            float endValue = direction == 0 ? 100f : 0f;
+            if (secondary)
+            {
+                startValue = direction == 0 ? 0f : 100f;
+                endValue = direction == 0 ? 100f : 0f;
+            }
+
+            var curve = new AnimationCurve
+            {
+                keys = new[]
+                {
+                    new Keyframe(startTime, startValue),
+                    new Keyframe(endTime, endValue)
+                }
+            };
+
+            var binding = new EditorCurveBinding
+            {
+                path = path,
+                type = typeof(SkinnedMeshRenderer),
+                propertyName = "blendShape." + blendShapeName
+            };
+            AnimationUtility.SetEditorCurve(clip, binding, curve);
+        }
+
+        private void SetWriteDefaults(AnimatorState state, int writeDefaultSetting)
+        {
+            if (state == null) return;
+            if (writeDefaultSetting == 0) return;
+
+            bool writeDefaults = (writeDefaultSetting == 1);
+
+            // 使用序列化方式设置 m_WriteDefaultValues，与 SSG 的实现方式保持一致
+            var so = new SerializedObject(state);
+            var prop = so.FindProperty("m_WriteDefaultValues");
+            if (prop != null)
+            {
+                prop.boolValue = writeDefaults;
+                so.ApplyModifiedProperties();
+            }
+        }
+
+        private int ResolveAutoWriteDefaults(AnimatorController controller)
+        {
+            if (controller == null || controller.layers == null || controller.layers.Length == 0)
+                return 2; // 无层时视为 OFF
+
+            bool anyLayerConsidered = false;
+            bool allLayersAllOn = true;
+
+            foreach (var layer in controller.layers)
+            {
+                if (layer == null || layer.stateMachine == null) continue;
+
+                var states = CollectStatesRecursive(layer.stateMachine);
+                if (states.Count <= 1) continue; // 0 或 1 个状态的层忽略
+
+                anyLayerConsidered = true;
+
+                foreach (var s in states)
+                {
+                    if (s == null) continue;
+                    var so = new SerializedObject(s);
+                    var prop = so.FindProperty("m_WriteDefaultValues");
+                    bool isOn = prop != null && prop.boolValue;
+                    if (!isOn)
+                    {
+                        allLayersAllOn = false;
+                        break;
+                    }
+                }
+
+                if (!allLayersAllOn)
+                {
+                    break;
+                }
+            }
+
+            if (!anyLayerConsidered) return 2;      // 没有“有意义”的层 -> OFF
+            if (allLayersAllOn) return 1;           // 所有被考虑的层全部 WD=ON -> ON
+            return 2;                               // 其它情况 -> OFF
+        }
+
+        private List<AnimatorState> CollectStatesRecursive(AnimatorStateMachine sm)
+        {
+            var list = new List<AnimatorState>();
+            if (sm == null) return list;
+
+            foreach (var child in sm.states)
+            {
+                if (child.state != null) list.Add(child.state);
+            }
+
+            foreach (var sub in sm.stateMachines)
+            {
+                if (sub.stateMachine != null)
+                {
+                    list.AddRange(CollectStatesRecursive(sub.stateMachine));
+                }
+            }
+
+            return list;
+        }
+
+        private AnimationClip SaveAnimationClip(AnimationClip clip, string folderPath)
+        {
+            if (clip == null || string.IsNullOrEmpty(folderPath)) return clip;
+            ToolboxUtils.EnsureFolderExists(folderPath);
+            string assetPath = $"{folderPath}/{clip.name}.anim";
+
+            var existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
+            if (existing != null)
+            {
+                EditorUtility.CopySerialized(clip, existing);
+                AssetDatabase.SaveAssets();
+                return existing;
+            }
+
+            AssetDatabase.CreateAsset(clip, assetPath);
+            AssetDatabase.SaveAssets();
+            var savedClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
+            return savedClip != null ? savedClip : clip;
+        }
+    }
+}

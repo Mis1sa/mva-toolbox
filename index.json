@@ -2,10 +2,7 @@
   "name": "Mis1sa VPM Repository",
   "id": "com.mis1sa.vpm-repo",
   "url": "https://github.com/Mis1sa/mva-toolbox",
-  "author": {
-    "name": "Mis1sa"
-  },
-  "version": 1,
+  "author": "Mis1sa",
   "packages": {
     "com.mis1sa.mva-toolbox": {
       "versions": {

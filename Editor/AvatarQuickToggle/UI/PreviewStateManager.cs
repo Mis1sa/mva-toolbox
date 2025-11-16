@@ -6,6 +6,7 @@ using IntStateGroup = MVA.Toolbox.AvatarQuickToggle.ToggleConfig.IntStateGroup;
 
 namespace MVA.Toolbox.AvatarQuickToggle.Editor
 {
+    // 管理 Avatar 预览时的默认状态与 BlendShape 快照
     internal class PreviewStateManager
     {
         private readonly Dictionary<GameObject, bool> defaultActiveStates = new Dictionary<GameObject, bool>();
@@ -30,6 +31,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             previewBlendSnapshot.Clear();
         }
 
+        // 从当前 Int 组列表构建基线快照，供 WD On/Off 转换使用
         public BaselineSnapshot BuildBaselineSnapshot(List<IntStateGroup> groups) => new BaselineSnapshot
         {
             groups = CloneGroups(groups)
@@ -56,6 +58,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             }
         }
 
+        // 遍历 Avatar 层级，记录激活状态和 BlendShape 权重，可选地作为“默认快照”存档
         public void CaptureAvatarSnapshot(GameObject root, bool storeAsDefault)
         {
             previewActiveSnapshot.Clear();
@@ -116,6 +119,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             }
         }
 
+        // 获取物体在默认快照中的激活状态，若无记录则以当前状态为默认
         public bool TryGetDefaultActiveState(GameObject go, out bool isActive)
         {
             if (go == null)
@@ -135,6 +139,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return true;
         }
 
+        // 获取 BlendShape 在默认快照中的权重，若无记录则从当前 SMR 读取并缓存
         public bool TryGetDefaultBlendShape(GameObject go, string shapeName, out float weight)
         {
             weight = 0f;
@@ -164,6 +169,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return true;
         }
 
+        // 将场景状态重置为捕获快照时的默认激活与 BlendShape 权重
         public void ApplyBaselineDefaults()
         {
             foreach (var kv in defaultActiveStates)
@@ -185,6 +191,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             }
         }
 
+        // 应用单个 Bool/BlendShape 目标的预览状态
         public void ApplyTargetState(TargetItem item, bool useOnState, BlendShapePreviewMode blendShapeMode = BlendShapePreviewMode.Directional)
         {
             if (item == null || item.targetObject == null) return;
@@ -213,6 +220,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             }
         }
 
+        // 离散模式：在 0/100 之间切换主/副 BlendShape 权重
         private void ApplyDiscreteWeights(TargetItem item, bool useOnState)
         {
             if (!item.splitBlendShape || string.IsNullOrEmpty(item.secondaryBlendShapeName))
@@ -232,6 +240,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             }
         }
 
+        // 连续模式：根据归一化 t 在 0~100 范围内插值权重
         private void ApplyDirectionalWeights(TargetItem item, float t)
         {
             if (!item.splitBlendShape || string.IsNullOrEmpty(item.secondaryBlendShapeName))
@@ -248,6 +257,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             }
         }
 
+        // Float 模式：根据 normalized 在主/副 BlendShape 间分段平滑过渡
         public void ApplySplitFloatState(TargetItem item, float normalized)
         {
             if (item == null || item.targetObject == null) return;
@@ -319,8 +329,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         private SkinnedMeshRenderer ResolveRenderer(GameObject go)
         {
             if (go == null) return null;
-            // 预览模式下也使用与动画生成相同的 AAO 解析逻辑，
-            // 确保在 MergeSkinnedMesh 的合并/重命名模式下都能找到实际驱动的 SkinnedMeshRenderer。
+            // 预览时复用动画生成阶段的 AAO 解析逻辑，保证能找到实际驱动的 SkinnedMeshRenderer
             return ToolboxUtils.ResolveSkinnedMeshForBlendShape(go);
         }
 
@@ -332,11 +341,13 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return previewBlendSnapshot.TryGetValue(smr, out var map) && map != null && map.TryGetValue(shapeName, out weight);
         }
 
+        // 将 0/1 选项映射为 0/100 权重
         private float MapDiscreteWeight(int option)
         {
             return option == 0 ? 0f : 100f;
         }
 
+        // 根据方向与归一化 t 计算权重（0~100）
         private float EvaluateWeight(int direction, float t)
         {
             t = Mathf.Clamp01(t);
@@ -353,12 +364,10 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return EvaluateWeight(direction, Mathf.Clamp01(t));
         }
 
+        // 为指定目标应用 BlendShape 权重，优先使用 AAO 映射，其次回退到单一 SMR 与 MergeSkinnedMesh 子层级
         private void ApplyBlendShape(GameObject target, string blendShapeName, float weight)
         {
             if (target == null || string.IsNullOrEmpty(blendShapeName)) return;
-            // 新增：优先使用 ToolboxUtils.ResolveOriginalBlendShapeTargets，将“最终名称”映射到
-            // 实际应预览的原始 SMR + 原始 BlendShape 名称，再在这些目标上设置权重。
-            // 这样在 AAO MSM 重命名或 RenameBlendShape 改名后，仍能命中正确的原始形态键。
             var mappedTargets = ToolboxUtils.ResolveOriginalBlendShapeTargets(target, blendShapeName);
             bool applied = false;
             if (mappedTargets != null && mappedTargets.Count > 0)
@@ -376,12 +385,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                 }
             }
 
-            // 若 AAO 映射未生效，则回退到原有逻辑：
-            // 1) 使用 ResolveRenderer 找到单一 SMR 并直接按当前名称设权重；
-            // 2) 若仍未命中，则在 AAO MergeSkinnedMesh 节点及其子 SMR 中查找同名键逐一设权重。
             if (!applied)
             {
-                // 原逻辑 1：对解析出的 SMR 直接设权重（与动画生成使用同一解析逻辑）。
                 var smr = ResolveRenderer(target);
                 if (smr != null && smr.sharedMesh != null)
                 {
@@ -393,9 +398,6 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                     }
                 }
 
-                // 原逻辑 2：若解析出的 SMR 上找不到该 BlendShape，
-                // 仿照原 SSG：回退到 AAO MergeSkinnedMesh 节点及其子节点 SMR，
-                // 在所有包含同名 BlendShape 的 SMR 上逐一设权重。
                 if (!applied)
                 {
                     var merge = FindAaoMergeComponent(target);

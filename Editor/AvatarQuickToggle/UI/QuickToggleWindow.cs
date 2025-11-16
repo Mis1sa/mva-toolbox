@@ -17,14 +17,14 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
 {
     public class QuickToggleWindow : EditorWindow
     {
-        // Top: avatar or QuickToggleConfig
+        // 顶部对象：当前操作的 Avatar 及其 QuickToggleConfig
         private VRCAvatarDescriptor targetAvatarDescriptor;
         private QuickToggleConfig loadedConfigComponent;
         private AnimatorController fxController;
         private VRCExpressionParameters expressionParameters;
         private VRCExpressionsMenu expressionsMenu;
 
-        // Edit-from-config selector
+        // “从配置脚本编辑”相关的选择与锁定状态
         private readonly List<QuickToggleConfig.LayerConfig> availableConfigEntries = new List<QuickToggleConfig.LayerConfig>();
         private string[] configEntryOptions = System.Array.Empty<string>();
         private int selectedConfigEntryIndex = -1;
@@ -32,7 +32,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         private int lockedSwitchType = -1; // 0=Bool,1=Int,2=Float
         private string lockedLayerName = null;
 
-        // UI state (Core)
+        // 核心 UI 配置状态
         private int selectedLayerType = 0;
         private string layerName = "";
         private string parameterName = "";
@@ -50,12 +50,12 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         private bool useNDMFMode = true;
         private string clipSavePath = ToolboxUtils.GetAqtRootFolder();
 
-        // Defaults
+        // 参数默认值
         private int defaultStateSelection = 0; // Bool: 0=ON,1=OFF
         private int defaultIntValue = 0;
         private float defaultFloatValue = 0f;
 
-        // Targets (data only, UI暂不实现)
+        // 各类型开关的目标数据
         private readonly List<TargetItem> boolTargets = new List<TargetItem>();
         private readonly List<IntStateGroup> intGroups = new List<IntStateGroup>();
         private readonly List<TargetItem> floatTargets = new List<TargetItem>();
@@ -66,7 +66,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
 
         private Vector2 scroll;
 
-        // Cached UI data for overwrite/menus
+        // 覆盖/菜单选择相关的缓存 UI 数据
         private string[] availableLayerNames = System.Array.Empty<string>();
         private int selectedLayerPopupIndex = -1;
         private string[] availableParameterNames = System.Array.Empty<string>();
@@ -84,7 +84,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         private const float W_SPLIT = 90f;
         private const float W_BTN = 24f;
 
-        // Preview values
+        // 预览相关状态
         private bool isPreviewing = false;
         private int previewBoolValue = 0;
         private int previewIntValue = 0;
@@ -99,16 +99,12 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             GetWindow<QuickToggleWindow>("Avatar Quick Toggle");
         }
 
-        /// <summary>
-        /// 当 Direct Apply 在后台执行完毕后，由工作流调用此方法，
-        /// 以便在窗口仍然打开的情况下刷新缓存的 Avatar 数据（包括 FX 控制器与可用层级列表）。
-        /// </summary>
         public static void RefreshCachedAvatarDataIfOpen()
         {
             var window = GetWindow<QuickToggleWindow>(false, null, false);
             if (window == null) return;
 
-            // 仅在当前窗口已有有效 Avatar 时刷新
+            // 若窗口已选择 Avatar，则刷新其缓存数据（由 DirectApplyWorkflow 调用）
             if (window.targetAvatarDescriptor != null)
             {
                 window.LoadAvatarData(window.targetAvatarDescriptor);
@@ -1302,6 +1298,7 @@ AfterParameterPopup: ;
                 return;
             }
 
+            // 基于当前 Int 目标构建预览快照，用于 WD On/Off 转换（转换逻辑定义于 IntGroupSnapshotConverter.cs）
             var baseline = previewState.BuildBaselineSnapshot(intGroups);
             if (toWDOn)
             {
@@ -1316,6 +1313,7 @@ AfterParameterPopup: ;
                 editInWDOnMode = false;
             }
 
+            // 应用转换后的目标，并在预览模式下立即刷新预览状态
             OnTargetsModified();
             if (isPreviewing)
             {
@@ -1326,6 +1324,7 @@ AfterParameterPopup: ;
 
         private void ReplaceIntGroups(List<IntStateGroup> newGroups)
         {
+            // 将 Int 目标组整体替换为转换后的结果
             intGroups.Clear();
             foreach (var grp in newGroups)
             {
@@ -1335,6 +1334,7 @@ AfterParameterPopup: ;
 
         private IntStateGroup CloneIntGroup(IntStateGroup src)
         {
+            // 克隆 Int 组结构，避免直接共享引用
             var cloned = new IntStateGroup
             {
                 stateName = src.stateName,
@@ -1619,11 +1619,6 @@ AfterParameterPopup: ;
             EditorGUILayout.EndVertical();
         }
 
-        /// <summary>
-        /// 在预览块下方绘制 NDMF 模式勾选和配置名称输入。
-        /// 非编辑模式：仅当勾选 NDMF 模式时才展开配置名称框；
-        /// 编辑模式：始终显示配置名称输入，但不显示 NDMF 勾选。
-        /// </summary>
         private void DrawModeAndConfigNameRow()
         {
             GUILayout.Space(2f);
@@ -1649,7 +1644,7 @@ AfterParameterPopup: ;
             }
         }
 
-        // Preview minimal stub
+        // 预览控制：捕获/恢复 Avatar 外观，并根据当前参数值应用预览
         private void StartPreview()
         {
             if (isPreviewing) return;
@@ -1971,11 +1966,6 @@ AfterParameterPopup: ;
             return result;
         }
 
-        /// <summary>
-        /// 在覆盖层级模式下解析应该写入配置的最终层级名。
-        /// 若 overwriteLayer 为 true 且当前 layerName 为空，则使用当前下拉选择的层级名；
-        /// 若未选择则退回第一个可用层级名；否则直接返回 layerName。
-        /// </summary>
         private string ResolveEffectiveLayerName()
         {
             if (!overwriteLayer)
@@ -2346,9 +2336,12 @@ AfterParameterPopup: ;
             availableMenuPaths = System.Array.Empty<string>();
             selectedLayerPopupIndex = -1;
             selectedParameterPopupIndex = -1;
-            selectedMenuPathIndex = 0;
+            // 原逻辑：每次加载 Avatar 时将菜单索引重置为 0，并把 currentMenuPath 写成 "/" 作为虚根；
+            // 新逻辑：不再使用 "/" 作为固定虚根，由 RefreshMenuPaths 依据真实菜单结构决定初始选项。
+            selectedMenuPathIndex = -1;
             menuPathMap = new Dictionary<string, VRCExpressionsMenu>();
-            currentMenuPath = "/";
+            // 将当前菜单路径重置为空字符串，由 RefreshMenuPaths 在有可用菜单时填充实际根路径
+            currentMenuPath = string.Empty;
 
             if (avatar == null) return;
             fxController = ToolboxUtils.GetExistingFXController(avatar) ?? ToolboxUtils.EnsureFXController(avatar);
@@ -2492,13 +2485,20 @@ AfterParameterPopup: ;
             // 若处于“从配置编辑”模式，优先使用配置中保存的 menuPath
             if (isEditingConfigEntry && !string.IsNullOrEmpty(currentMenuPath))
             {
-                if (menuPathMap.ContainsKey(currentMenuPath))
+                // 兼容旧配置中以 "/" 为虚根的路径：
+                // 例如 "/Root/Sub" 与 "Root/Sub" 视为等价，这里统一规范化后再匹配。
+                var normalized = NormalizeMenuPathForLookup(currentMenuPath);
+                if (menuPathMap.ContainsKey(normalized))
                 {
-                    selectedMenuPathIndex = System.Array.IndexOf(availableMenuPaths, currentMenuPath);
+                    selectedMenuPathIndex = System.Array.IndexOf(availableMenuPaths, normalized);
                     if (selectedMenuPathIndex < 0)
                     {
                         selectedMenuPathIndex = 0;
                         currentMenuPath = availableMenuPaths[0];
+                    }
+                    else
+                    {
+                        currentMenuPath = availableMenuPaths[selectedMenuPathIndex];
                     }
                     return;
                 }
@@ -2507,6 +2507,28 @@ AfterParameterPopup: ;
             // 非编辑模式或配置路径无效时，行为与 SSG 一致：默认选中第 0 项
             selectedMenuPathIndex = Mathf.Clamp(selectedMenuPathIndex, 0, availableMenuPaths.Length - 1);
             currentMenuPath = availableMenuPaths[selectedMenuPathIndex];
+        }
+
+        // 规范化菜单路径字符串，用于从映射中查找：
+        // - 去除前导 "/"，兼容旧以虚根表示的路径；
+        // - 单独的 "/" 视为“根菜单”，映射为当前 expressionsMenu.name 对应的根路径。
+        private string NormalizeMenuPathForLookup(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return string.Empty;
+
+            string trimmed = path.Trim();
+            if (trimmed == "/")
+            {
+                return expressionsMenu != null && !string.IsNullOrEmpty(expressionsMenu.name)
+                    ? expressionsMenu.name.Trim()
+                    : string.Empty;
+            }
+
+            if (trimmed.StartsWith("/", StringComparison.Ordinal))
+            {
+                trimmed = trimmed.TrimStart('/');
+            }
+            return trimmed;
         }
 
     }

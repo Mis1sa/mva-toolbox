@@ -3,6 +3,7 @@ using UnityEditorInternal;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using MVA.Toolbox.AvatarQuickToggle;
+using MVA.Toolbox.Public;
 
 #if AAO_VRCSDK3_AVATARS && MVA_AAO_SUPPORT
 using Anatawa12.AvatarOptimizer.API;
@@ -26,7 +27,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         {
             serializedObject.Update();
 
-            // 顶部提示：推荐使用窗口编辑
+            // 顶部提示：引导用户使用菜单窗口进行主要编辑
             EditorGUILayout.HelpBox("推荐使用菜单 Tools/MVA Toolbox/Avatar Quick Toggle 来编辑和设置配置。此组件主要用于查看和微调现有配置。", MessageType.Info);
 
             DrawAvatarInfo();
@@ -56,7 +57,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
 
             _configList.drawHeaderCallback = rect =>
             {
-                EditorGUI.LabelField(rect, "配置列表 (将由上到下执行)");
+                EditorGUI.LabelField(rect, "配置列表（按顺序应用）");
             };
 
             _configList.drawElementCallback = (rect, index, active, focused) =>
@@ -290,7 +291,10 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                 }
                 EditorGUILayout.EndHorizontal();
 
-                EditorGUILayout.PropertyField(item.FindPropertyRelative("targetObject"), new GUIContent("目标对象"));
+                var targetObjProp = item.FindPropertyRelative("targetObject");
+                var currentGo = targetObjProp.objectReferenceValue as GameObject;
+                var newGo = (GameObject)EditorGUILayout.ObjectField("目标对象", currentGo, typeof(GameObject), true);
+                targetObjProp.objectReferenceValue = ToolboxUtils.ResolveMergeNodeTarget(newGo);
 
                 if (mode == TargetMode.Bool)
                 {
@@ -367,11 +371,11 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         {
             float line = EditorGUIUtility.singleLineHeight;
 
-            // 默认值
+            // Bool 默认值设置
             defaultState.intValue = EditorGUI.IntSlider(rect, "默认值", defaultState.intValue, 0, 1);
             rect.y += line + 2f;
 
-            // 生成菜单项
+            // 是否生成菜单项
             createMenu.boolValue = EditorGUI.ToggleLeft(rect, "生成菜单项", createMenu.boolValue);
             rect.y += line + 2f;
             if (createMenu.boolValue)
@@ -382,7 +386,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                 rect.y += line + 4f;
             }
 
-            // 目标项
+            // Bool 目标对象列表
             EditorGUI.LabelField(rect, "目标项");
             rect.y += line + 2f;
 
@@ -415,13 +419,13 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
 
                 if (controlType.intValue == 0)
                 {
-                    // GameObject 模式：状态 激活/关闭
+                    // GameObject 模式：切换激活/关闭
                     goState.intValue = EditorGUI.Popup(r, "状态", goState.intValue, new[] { "激活", "关闭" });
                     rect.y += line + 4f;
                 }
                 else
                 {
-                    // BlendShape 模式：BlendShape 名称 + 状态 0/100
+                    // BlendShape 模式：设置名称与 0/100 状态
                     blendShapeName.stringValue = EditorGUI.TextField(r, "BlendShape", blendShapeName.stringValue);
                     rect.y += line + 2f;
                     bsState.intValue = EditorGUI.Popup(rect, "状态", bsState.intValue, new[] { "0", "100" });
@@ -435,11 +439,11 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         {
             float line = EditorGUIUtility.singleLineHeight;
 
-            // 默认值
+            // Int 默认值设置
             defaultInt.intValue = EditorGUI.IntField(rect, "默认值", defaultInt.intValue);
             rect.y += line + 2f;
 
-            // 生成菜单项
+            // 是否生成 Int 子菜单
             createMenu.boolValue = EditorGUI.ToggleLeft(rect, "生成菜单项", createMenu.boolValue);
             rect.y += line + 2f;
             if (createMenu.boolValue)
@@ -447,7 +451,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                 subMenuName.stringValue = EditorGUI.TextField(rect, "子菜单名称", subMenuName.stringValue);
                 rect.y += line + 2f;
 
-                EditorGUI.LabelField(rect, "菜单项名称");
+                EditorGUI.LabelField(rect, "菜单项名称列表");
                 rect.y += line + 2f;
 
                 if (menuItemNames.arraySize == 0)
@@ -461,7 +465,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                 }
             }
 
-            // 目标组
+            // Int 状态组列表
             EditorGUI.LabelField(rect, "目标组");
             rect.y += line + 2f;
 
@@ -523,11 +527,11 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         {
             float line = EditorGUIUtility.singleLineHeight;
 
-            // 默认值
+            // Float 默认值设置
             defaultFloat.floatValue = EditorGUI.Slider(rect, "默认值", defaultFloat.floatValue, 0f, 1f);
             rect.y += line + 2f;
 
-            // 生成菜单项
+            // 是否生成 Float 菜单项
             createMenu.boolValue = EditorGUI.ToggleLeft(rect, "生成菜单项", createMenu.boolValue);
             rect.y += line + 2f;
             if (createMenu.boolValue)

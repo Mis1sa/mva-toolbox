@@ -19,7 +19,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             var root = config.avatar != null ? config.avatar.gameObject : null;
             if (root == null) return;
 
-            // 解析 Write Defaults 设置：当为 Auto(0) 时，根据现有 FX 层的状态推导出 ON(1)/OFF(2)
+            // 解析 Write Defaults 设置：Auto(0) 时根据现有 FX 层推导为 On(1)/Off(2)
             int writeDefaults = data.writeDefaultSetting;
             if (writeDefaults == 0)
             {
@@ -32,7 +32,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             {
                 if (data.overwriteLayer)
                 {
-                    // 覆盖层级：删除同名层，并默认在原位置插回新层
+                    // 覆盖层级：删除同名层，并优先在原位置插入新层
                     layers.RemoveAt(existingIndex);
                     if (!insertIndex.HasValue)
                     {
@@ -41,7 +41,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 }
                 else
                 {
-                    // 不覆盖层级：为当前层级生成唯一名称，采用 [层级名]_[序号] 规则（例如 Cloth, Cloth_1, Cloth_2 ...）
+                    // 不覆盖层级：为当前层生成唯一名称，采用 [层级名]_[序号] 规则（Cloth_1, Cloth_2 ...）
                     var existingNames = new HashSet<string>(layers.Select(l => l.name));
                     string baseName = data.layerName;
                     if (existingNames.Contains(baseName))
@@ -108,7 +108,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                     break;
             }
 
-            // 查找是否已存在同名参数
+            // 查找 AnimatorController 中是否已存在同名参数
             var parameters = controller.parameters ?? System.Array.Empty<AnimatorControllerParameter>();
             int index = -1;
             for (int i = 0; i < parameters.Length; i++)
@@ -123,9 +123,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
             if (index >= 0)
             {
-                // 已存在同名参数：
-                // 未勾选覆盖参数时保持原有设置不变；
-                // 勾选覆盖参数时，强制同步类型与默认值以匹配当前层配置。
+                // 已存在同名参数：未勾选覆盖参数则保持原设置；勾选覆盖参数则同步类型和默认值
                 if (!data.overwriteParameter)
                 {
                     return;
@@ -136,7 +134,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 switch (desiredType)
                 {
                     case AnimatorControllerParameterType.Bool:
-                        existing.defaultBool = data.defaultStateSelection == 0;
+                        // Bool 默认值：0=OFF(false)，1=ON(true)
+                        existing.defaultBool = data.defaultStateSelection == 1;
                         break;
                     case AnimatorControllerParameterType.Int:
                         existing.defaultInt = Mathf.Max(0, data.defaultIntValue);
@@ -152,7 +151,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 return;
             }
 
-            // 不存在同名参数时，直接创建新参数
+            // 不存在同名参数时，创建新参数并设置默认值
             var parameter = new AnimatorControllerParameter
             {
                 name = data.parameterName,
@@ -162,7 +161,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             switch (desiredType)
             {
                 case AnimatorControllerParameterType.Bool:
-                    // Bool: 0 = OFF(false), 1 = ON(true)
+                    // Bool：0=OFF(false)，1=ON(true)
                     parameter.defaultBool = data.defaultStateSelection == 1;
                     break;
                 case AnimatorControllerParameterType.Int:
@@ -220,7 +219,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 var stateName = string.IsNullOrEmpty(group?.stateName) ? $"State {i}" : group.stateName;
                 var state = stateMachine.AddState(stateName);
 
-                // Int 动画剪辑名称：优先使用对应的菜单项名称；若为空，则使用 [最终层级名]_[索引]
+                // Int 动画剪辑名称：优先使用菜单项名称；为空时使用 [层级名或参数名]_[索引]
                 string clipName = null;
                 if (data.intMenuItemNames != null && i < data.intMenuItemNames.Count)
                 {
@@ -262,13 +261,12 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             var stateMachine = new AnimatorStateMachine { name = data.layerName + "_SM" };
 
             // 先创建动画剪辑，再使用剪辑名称作为状态名
-            // Float 动画剪辑名称：与最终层级名保持一致（不再附加 "_Float" 后缀）
+            // Float 动画剪辑名称：与层级名保持一致（不再附加 "_Float" 后缀）
             var clip = CreateFloatAnimationClip(data, root, data.layerName);
             var state = stateMachine.AddState(clip != null ? clip.name : "Blend");
             state.motion = clip;
 
-            // 启用 Motion Time，并使用当前层绑定的参数名驱动时间
-            // 这样 Float 参数将在 0-1 范围内直接控制剪辑的归一化时间，与原 SSG 行为一致。
+            // 启用 Motion Time，并使用当前层参数名驱动 0-1 范围的归一化时间
 #if UNITY_2019_1_OR_NEWER
             state.timeParameterActive = true;
             state.timeParameter = data.parameterName;
@@ -287,14 +285,13 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         {
             var clip = CreateBoolAnimationClipInMemory(data, root, isOnState);
             if (clip == null) return null;
-            // NDMF 工作流下，AQT 使用临时路径 "Assets/__AQT_NDMF__/..."，此时不在磁盘下创建或保存剪辑，
-            // 仅在内存中使用，避免生成临时资源文件夹。
+            // NDMF 工作流下，使用临时路径 "Assets/__AQT_NDMF__/..."：仅在内存中使用，不写入磁盘
             if (!string.IsNullOrEmpty(data.clipSavePath) && data.clipSavePath.StartsWith("Assets/__AQT_NDMF__/"))
             {
                 return clip;
             }
 
-            // 普通模式：仍按原逻辑将剪辑保存到指定路径下
+            // 普通模式：将剪辑保存到指定路径（目录由 ToolboxUtils 构建，定义于 ToolboxUtils.cs）
             string folderPath = ToolboxUtils.BuildAqtLayerFolder(data.clipSavePath, data.layerName);
             return SaveAnimationClip(clip, folderPath);
         }
@@ -303,8 +300,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         {
             var clip = new AnimationClip
             {
-                // Bool 动画剪辑名称：使用最终层级名 + "_ON" / "_OFF"
-                name = $"{data.layerName}_{(isOnState ? "ON" : "OFF")}"
+                // Bool 动画剪辑名称：使用层级名 + "_ON" / "_OFF"
+                name = $"{data.layerName}_{(isOnState ? "ON" : "OFF")}" 
             };
 
             foreach (var item in data.boolTargets)
@@ -319,8 +316,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 }
                 else if (item.controlType == 1 && !string.IsNullOrEmpty(item.blendShapeName))
                 {
-                    // 对 BlendShape，直接使用当前目标物体的路径写入曲线，
-                    // 让 AAO 在构建阶段根据 BlendShape 名称处理合并/重命名。
+                    // BlendShape 曲线直接绑定到目标物体路径，由 AAO 在构建阶段处理合并/重命名
                     bool isZeroWhenOn = item.onStateBlendShapeValue == 0;
                     float onValue = isZeroWhenOn ? 0f : 100f;
                     float targetValue = isOnState ? onValue : 100f - onValue;
@@ -331,7 +327,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             return clip;
         }
 
-        // 仅供未来 NDMF 工作流使用：在内存中创建 Bool 动画剪辑，不保存到磁盘
+        // 提供给 NDMF 工作流：仅在内存中创建 Bool 动画剪辑，不保存到磁盘
         public AnimationClip CreateBoolAnimationClipForNDMF(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, bool isOnState)
         {
             return CreateBoolAnimationClipInMemory(data, root, isOnState);
@@ -342,13 +338,13 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             var clip = CreateIntAnimationClipInMemory(data, group, root, clipName);
             if (clip == null) return null;
 
-            // NDMF 工作流下的临时路径：不创建/保存磁盘资源
+            // NDMF 工作流下使用临时路径：不创建/保存磁盘资源
             if (!string.IsNullOrEmpty(data.clipSavePath) && data.clipSavePath.StartsWith("Assets/__AQT_NDMF__/"))
             {
                 return clip;
             }
 
-            // 普通模式：保存到指定路径
+            // 普通模式：保存到指定路径（目录由 ToolboxUtils 构建，定义于 ToolboxUtils.cs）
             string folderPath = ToolboxUtils.BuildAqtLayerFolder(data.clipSavePath, data.layerName);
             return SaveAnimationClip(clip, folderPath);
         }
@@ -357,7 +353,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         {
             var clip = new AnimationClip
             {
-                // Int 动画剪辑名称：直接使用传入的 clipName（已按菜单项名称或默认规则生成）
+                // Int 动画剪辑名称：使用传入 clipName（由菜单名或默认规则生成）
                 name = clipName
             };
 
@@ -374,8 +370,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                     }
                     else if (item.controlType == 1 && !string.IsNullOrEmpty(item.blendShapeName))
                     {
-                        // Int 模式下也直接将曲线绑定到 TargetItem 的 GameObject 路径，
-                        // 由 AAO 在构建时处理合并/重命名。
+                        // Int 模式同样将曲线绑定到目标物体路径，由 AAO 在构建时处理合并/重命名
                         bool isZero = item.onStateBlendShapeValue == 0;
                         float value = isZero ? 0f : 100f;
                         AddBlendShapeCurve(clip, path, item.blendShapeName, value);
@@ -391,7 +386,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             var clip = CreateFloatAnimationClipInMemory(data, root, clipName);
             if (clip == null) return null;
 
-            // NDMF 工作流下的临时路径：不创建/保存磁盘资源
+            // NDMF 工作流下使用临时路径：不创建/保存磁盘资源
             if (!string.IsNullOrEmpty(data.clipSavePath) && data.clipSavePath.StartsWith("Assets/__AQT_NDMF__/"))
             {
                 return clip;
@@ -404,9 +399,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
         private AnimationClip CreateFloatAnimationClipInMemory(MVA.Toolbox.AvatarQuickToggle.ToggleConfig.LayerConfig data, GameObject root, string clipName)
         {
-            // 按 SSG 的 CreateFloatSwitchClip：
-            // - 使用传入的 clipName（通常为 LayerName + "_Float"）作为剪辑名
-            // - 时间轴使用 0~1 归一化时间，由 Animator 的 Motion Time 控制实际时间
+            // Float 动画剪辑：使用 clipName 作为名称，时间轴为 0~1 归一化时间，由 Motion Time 控制
             var clip = new AnimationClip
             {
                 name = clipName
@@ -416,15 +409,15 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             foreach (var item in data.floatTargets)
             {
                 if (item == null || item.targetObject == null) continue;
-                // Float 只支持 BlendShape 目标，若主次名称都为空则跳过
+                // Float 只支持 BlendShape 目标，主次名称都为空时跳过
                 bool hasPrimary = !string.IsNullOrEmpty(item.blendShapeName);
                 bool hasSecondary = !string.IsNullOrEmpty(item.secondaryBlendShapeName);
                 if (!hasPrimary && !hasSecondary) continue;
 
-                // 曲线直接绑定到当前目标物体路径，由 AAO 在构建阶段根据名称处理合并/重命名
+                // 曲线直接绑定到目标物体路径，由 AAO 在构建阶段根据名称处理合并/重命名
                 string path = ToolboxUtils.GetGameObjectPath(item.targetObject, root);
 
-                // 未开启二分模式：始终使用单一形变曲线（优先主，如果主为空则使用次）
+                // 未开启二分模式：始终使用单一形变曲线（优先使用主名称，其次使用副名称）
                 if (!item.splitBlendShape)
                 {
                     string shape = hasPrimary ? item.blendShapeName : item.secondaryBlendShapeName;
@@ -448,8 +441,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 }
                 else
                 {
-                    // 二分模式：始终按主/次三点曲线处理
-                    // 即便 secondaryBlendShapeName 为 "无"/空，也视为"只主"的二分，不再退化为单一曲线
+                    // 二分模式：按主/次三点曲线处理，即便次名称为空也仍视为二分模式
                     float halfTime = 0.5f; // 归一化时间 0.5 对应 SSG 的 halfTime
 
                     if (hasPrimary)
@@ -491,14 +483,14 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             return clip;
         }
 
-        // 评估 Float 模式下给定方向（0: 0->100, 1: 100->0）和归一化时间 t 的权重，完全对齐 SSG 的 EvaluateFloatWeight
+        // 评估 Float 模式下给定方向（0: 0->100, 1: 100->0）在归一化时间 t 对应的权重
         private float EvaluateFloatWeight(int direction, float t)
         {
             t = Mathf.Clamp01(t);
             return (direction == 0 ? t : 1f - t) * 100f;
         }
 
-        // 将曲线关键帧切线设为线性，避免插值导致的缓入/缓出，行为对齐 SSG 的 SetLinearTangents
+        // 将曲线关键帧切线设为线性，避免插值缓入/缓出
         private void SetLinearTangents(AnimationCurve curve)
         {
             if (curve == null) return;
@@ -590,7 +582,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
             bool writeDefaults = (writeDefaultSetting == 1);
 
-            // 使用序列化方式设置 m_WriteDefaultValues，与 SSG 的实现方式保持一致
+            // 使用序列化方式设置 m_WriteDefaultValues 字段
             var so = new SerializedObject(state);
             var prop = so.FindProperty("m_WriteDefaultValues");
             if (prop != null)
@@ -603,7 +595,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         private int ResolveAutoWriteDefaults(AnimatorController controller)
         {
             if (controller == null || controller.layers == null || controller.layers.Length == 0)
-                return 2; // 无层时视为 OFF
+                return 2; // 无有效层时视为 OFF
 
             bool anyLayerConsidered = false;
             bool allLayersAllOn = true;
@@ -665,6 +657,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         private AnimationClip SaveAnimationClip(AnimationClip clip, string folderPath)
         {
             if (clip == null || string.IsNullOrEmpty(folderPath)) return clip;
+            // 使用 ToolboxUtils 确保目标文件夹存在（方法定义于 ToolboxUtils.cs）
             ToolboxUtils.EnsureFolderExists(folderPath);
             string assetPath = $"{folderPath}/{clip.name}.anim";
 

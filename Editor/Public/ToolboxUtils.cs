@@ -12,6 +12,7 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 namespace MVA.Toolbox.Public
 {
+    // 提供 Avatar/资源管理、AAO 兼容处理和通用编辑器工具方法
     public static class ToolboxUtils
     {
         private const string AqtRootFolder = "Assets/MVA Toolbox/AQT";
@@ -19,8 +20,10 @@ namespace MVA.Toolbox.Public
         private const string ParametersFolder = AqtRootFolder + "/ExpressionParameters";
         private const string MenuFolder = AqtRootFolder + "/ExpressionMenus";
 
+        // 返回 AQT 相关资产的根目录
         public static string GetAqtRootFolder() => AqtRootFolder;
 
+        // 清理路径片段中的非法字符，用于生成安全的文件夹/文件名
         public static string SanitizePathSegment(string segment)
         {
             if (string.IsNullOrWhiteSpace(segment)) return "Layer";
@@ -37,6 +40,7 @@ namespace MVA.Toolbox.Public
             return string.IsNullOrEmpty(result) ? "Layer" : result;
         }
 
+        // 在指定根路径下生成 AQT 层级的子文件夹路径
         public static string BuildAqtLayerFolder(string rootPath, string layerName)
         {
             string segment = SanitizePathSegment(layerName);
@@ -45,6 +49,7 @@ namespace MVA.Toolbox.Public
             return $"{rootPath}/{segment}";
         }
 
+        // 从传入对象解析并返回 VRCAvatarDescriptor
         public static VRCAvatarDescriptor GetAvatarDescriptor(UnityEngine.Object obj)
         {
             if (obj == null) return null;
@@ -58,12 +63,14 @@ namespace MVA.Toolbox.Public
             return null;
         }
 
+        // 判断给定物体是否是包含 VRCAvatarDescriptor 的 Avatar 根
         public static bool IsValidAvatar(GameObject obj)
         {
             if (obj == null) return false;
             return obj.GetComponent<VRCAvatarDescriptor>() != null;
         }
 
+        // 计算 target 相对于 root 的层级路径（不包含 root 名称）
         public static string GetGameObjectPath(GameObject target, GameObject root)
         {
             if (target == null || root == null) return string.Empty;
@@ -81,6 +88,7 @@ namespace MVA.Toolbox.Public
             return string.Join("/", stack.ToArray());
         }
 
+        // 确保指定 Assets 下的文件夹路径存在，不存在时逐级创建
         public static void EnsureFolderExists(string assetPath)
         {
             if (string.IsNullOrEmpty(assetPath)) return;
@@ -99,6 +107,7 @@ namespace MVA.Toolbox.Public
             }
         }
 
+        // 获取 Avatar 已配置的 FX AnimatorController，如不存在则返回 null
         public static AnimatorController GetExistingFXController(VRCAvatarDescriptor avatar)
         {
             if (avatar == null) return null;
@@ -121,6 +130,7 @@ namespace MVA.Toolbox.Public
             return null;
         }
 
+        // 确保 Avatar 拥有 FX AnimatorController，不存在时自动创建并挂载
         public static AnimatorController EnsureFXController(VRCAvatarDescriptor avatar)
         {
             if (avatar == null) return null;
@@ -168,12 +178,14 @@ namespace MVA.Toolbox.Public
             return controller;
         }
 
+        // 获取 Avatar 已配置的 VRCExpressionParameters，如不存在则返回 null
         public static VRCExpressionParameters GetExistingExpressionParameters(VRCAvatarDescriptor avatar)
         {
             if (avatar == null) return null;
             return avatar.expressionParameters;
         }
 
+        // 确保 Avatar 拥有 VRCExpressionParameters，不存在时在固定目录下创建
         public static VRCExpressionParameters EnsureExpressionParameters(VRCAvatarDescriptor avatar)
         {
             if (avatar == null) return null;
@@ -195,12 +207,14 @@ namespace MVA.Toolbox.Public
             return parameters;
         }
 
+        // 获取 Avatar 已配置的 VRCExpressionsMenu，如不存在则返回 null
         public static VRCExpressionsMenu GetExistingExpressionsMenu(VRCAvatarDescriptor avatar)
         {
             if (avatar == null) return null;
             return avatar.expressionsMenu;
         }
 
+        // 确保 Avatar 拥有 VRCExpressionsMenu，不存在时在固定目录下创建
         public static VRCExpressionsMenu EnsureExpressionsMenu(VRCAvatarDescriptor avatar)
         {
             if (avatar == null) return null;
@@ -221,28 +235,32 @@ namespace MVA.Toolbox.Public
             return menu;
         }
 
+        // 构建从菜单路径到菜单对象的映射：以根菜单名称为起点，路径形如 "Root/Sub/Sub2"
         public static Dictionary<string, VRCExpressionsMenu> GetMenuMap(VRCExpressionsMenu rootMenu)
         {
             if (rootMenu == null) return new Dictionary<string, VRCExpressionsMenu>();
-            // 使用本类已有的 TraverseMenuPaths 逻辑自行构建菜单路径到菜单对象的映射，
-            // 避免依赖 VRChat SDK 内部的 VRCExpressionManager.GetAllMenusRecursive 辅助方法。
+
             var map = new Dictionary<string, VRCExpressionsMenu>();
-            TraverseMenuPaths(rootMenu, "/", map);
+            var rootName = string.IsNullOrEmpty(rootMenu.name) ? "Menu" : rootMenu.name.Trim();
+            TraverseMenuPaths(rootMenu, rootName, map);
             return map;
         }
 
+        // 使用遍历逻辑创建菜单路径映射（与 GetMenuMap 行为保持一致）
         public static Dictionary<string, VRCExpressionsMenu> BuildMenuPathMap(VRCExpressionsMenu rootMenu)
         {
             var map = new Dictionary<string, VRCExpressionsMenu>();
             if (rootMenu == null) return map;
 
-            TraverseMenuPaths(rootMenu, "/", map);
+            var rootName = string.IsNullOrEmpty(rootMenu.name) ? "Menu" : rootMenu.name.Trim();
+            TraverseMenuPaths(rootMenu, rootName, map);
             return map;
         }
 
+        // 递归遍历菜单层级，将 SubMenu 映射到对应路径；路径格式保持 "Root/Sub/Sub2"，不再依赖以 "/" 为虚根
         private static void TraverseMenuPaths(VRCExpressionsMenu menu, string currentPath, Dictionary<string, VRCExpressionsMenu> map)
         {
-            if (menu == null || map.ContainsKey(currentPath)) return;
+            if (menu == null || string.IsNullOrEmpty(currentPath) || map.ContainsKey(currentPath)) return;
 
             map[currentPath] = menu;
 
@@ -256,17 +274,18 @@ namespace MVA.Toolbox.Public
                 var name = string.IsNullOrEmpty(control.name) ? string.Empty : control.name.Trim();
                 if (string.IsNullOrEmpty(name)) continue;
 
-                string childPath = currentPath == "/" ? $"/{name}" : $"{currentPath}/{name}";
+                string childPath = string.IsNullOrEmpty(currentPath) ? name : $"{currentPath}/{name}";
                 TraverseMenuPaths(control.subMenu, childPath, map);
             }
         }
 
+        // 返回排序后的菜单路径列表，用于 UI 下拉显示，路径格式为 "Root/Sub/Sub2"
         public static string[] GetMenuDisplayPaths(VRCExpressionsMenu rootMenu)
         {
-            if (rootMenu == null) return new[] { "/" };
+            if (rootMenu == null) return Array.Empty<string>();
 
             var map = BuildMenuPathMap(rootMenu);
-            if (map == null || map.Count == 0) return new[] { "/" };
+            if (map == null || map.Count == 0) return Array.Empty<string>();
 
             return map.Keys
                 .OrderBy(p => p.Length)
@@ -274,11 +293,6 @@ namespace MVA.Toolbox.Public
                 .ToArray();
         }
 
-        /// <summary>
-        /// 若传入的目标物体本身不是 AAO MergeSkinnedMesh 节点，但其挂载的 SkinnedMeshRenderer
-        /// 已经被某个 MergeSkinnedMesh.renderersSet 引用，则返回该 MergeSkinnedMesh 所在物体，
-        /// 以避免同时对“源 SMR”和“合并节点”重复配置。否则返回原始 target。
-        /// </summary>
         public static GameObject ResolveMergeNodeTarget(GameObject target)
         {
             if (target == null) return null;
@@ -295,13 +309,9 @@ namespace MVA.Toolbox.Public
                     return target;
                 }
             }
-
-            // 仅检查“当前物体自身”是否挂有 SkinnedMeshRenderer，且该 SMR 是否被某个 MSM 的 renderersSet 引用。
-            // 不再向子节点查找 SMR，以严格遵循“物体自己在合并列表中才自动替换”的规则。
             var smrOnTarget = target.GetComponent<SkinnedMeshRenderer>();
             if (smrOnTarget == null) return target;
 
-            // 在场景中查找所有 MergeSkinnedMesh 组件，检查其 renderersSet 是否包含该 SMR
             var allComponents = UnityEngine.Object.FindObjectsOfType<Component>(true);
             for (int i = 0; i < allComponents.Length; i++)
             {
@@ -316,7 +326,6 @@ namespace MVA.Toolbox.Public
                     var setObj = field != null ? field.GetValue(comp) : null;
                     if (setObj != null)
                     {
-                        // AAO 的 renderersSet 是 PrefabSafeSet<SkinnedMeshRenderer>，优先通过 GetAsSet() 拿到实际集合
                         var setType = setObj.GetType();
                         var getAsSet = setType.GetMethod("GetAsSet", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                         System.Collections.IEnumerable enumerable = null;
@@ -346,7 +355,6 @@ namespace MVA.Toolbox.Public
                 }
                 catch
                 {
-                    // 反射失败时忽略该组件，尝试下一个
                 }
             }
 
@@ -367,11 +375,6 @@ namespace MVA.Toolbox.Public
             return null;
         }
 
-        /// <summary>
-        /// 针对 BlendShape 目标解析实际使用的 SkinnedMeshRenderer。
-        /// 优先使用目标自身的 SkinnedMeshRenderer；若不存在，则向父级查找 AAO 的 Merge 组件，
-        /// 并使用其所在物体上的 SkinnedMeshRenderer；若仍未找到，再回退到子层级的 SkinnedMeshRenderer。
-        /// </summary>
         public static SkinnedMeshRenderer ResolveSkinnedMeshForBlendShape(GameObject target)
         {
             if (target == null) return null;
@@ -382,8 +385,6 @@ namespace MVA.Toolbox.Public
             {
                 return smr;
             }
-
-            // 其次：向父级查找 AAO MergeSkinnedMesh 组件，并使用其所在物体上的 SkinnedMeshRenderer
             Component merge = null;
             var parents = target.GetComponentsInParent<Component>(true);
             for (int i = 0; i < parents.Length; i++)
@@ -405,8 +406,6 @@ namespace MVA.Toolbox.Public
                     return mergedSmr;
                 }
             }
-
-            // 最后回退：搜索子层级 SkinnedMeshRenderer
             smr = target.GetComponentInChildren<SkinnedMeshRenderer>(true);
             if (smr != null && smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0)
             {
@@ -416,12 +415,6 @@ namespace MVA.Toolbox.Public
             return null;
         }
 
-        /// <summary>
-        /// 获取用于 UI 下拉显示的可用 BlendShape 名称列表。
-        /// 优先使用 ResolveSkinnedMeshForBlendShape 返回的 SMR；若该 SMR 无 BlendShape，
-        /// 则在挂有 AAO MergeSkinnedMesh 的节点及其子层级 SMR 中收集 BlendShape 名称；
-        /// 若仍未找到，则回退到 target 子层级的 SkinnedMeshRenderer。
-        /// </summary>
         public static string[] GetAvailableBlendShapeNames(GameObject target)
         {
             if (target == null) return System.Array.Empty<string>();
@@ -429,8 +422,6 @@ namespace MVA.Toolbox.Public
             var names = new List<string>();
             var resolved = ResolveSkinnedMeshForBlendShape(target);
 
-            // 前置资格判断：只有当目标物体本身包含 SkinnedMeshRenderer，或自身挂有 AAO MergeSkinnedMesh 组件时，
-            // 才认为有资格进入 BlendShape 模式。否则直接返回空列表，避免“纯集合物体”仅因子节点存在 SMR 就被当作可编辑目标。
             bool hasSelfSmr = target.GetComponent<SkinnedMeshRenderer>() != null;
 
             Component mergeOnTarget = null;
@@ -452,23 +443,16 @@ namespace MVA.Toolbox.Public
 
             if (!hasSelfSmr && mergeOnTarget == null)
             {
-                // 既不是带 SMR 的网格根，也不是 MSM 节点，直接视为不可进入 BlendShape 模式
                 return System.Array.Empty<string>();
             }
 
-            // 0. 优先：若存在 AAO 的 EditSkinnedMeshComponentUtil，则通过其 GetBlendShapes 接口获取最终 BlendShape 名称。
-            // 为了让 AAO 的处理链生效，并避免对普通集合物体误触发 AAO 逻辑，
-            // 仅当“当前拖入的物体本身”挂有 MergeSkinnedMesh 组件时，才使用该特殊路径。
             SkinnedMeshRenderer aaoRenderer = null;
             if (mergeOnTarget != null)
             {
                 aaoRenderer = mergeOnTarget.GetComponent<SkinnedMeshRenderer>();
             }
 
-            if (aaoRenderer == null)
-            {
-                aaoRenderer = resolved;
-            }
+            if (aaoRenderer == null) aaoRenderer = resolved;
 
             bool usedAaoInterface = false;
             if (aaoRenderer != null && mergeOnTarget != null)
@@ -478,8 +462,6 @@ namespace MVA.Toolbox.Public
                     var utilType = FindTypeByFullName("Anatawa12.AvatarOptimizer.EditSkinnedMeshComponentUtil");
                     if (utilType != null)
                     {
-                        // 在调用 GetBlendShapes 之前，先重置其内部共享排序器缓存，
-                        // 以便在切换 AAO Merge 模式或相关组件配置后重新构建处理链。
                         var resetMethod = utilType.GetMethod(
                             "ResetSharedSorter",
                             BindingFlags.NonPublic | BindingFlags.Static);
@@ -523,8 +505,6 @@ namespace MVA.Toolbox.Public
                 }
             }
 
-            // 若 AAO MSM 存在且成功调用了 AAO 接口，则其返回结果视为最终真相：
-            // 即便返回 0 个名称，也不再回退到基于 mesh 的遍历逻辑，直接视为“无 BlendShape”。
             if (usedAaoInterface)
             {
                 if (names.Count == 0)
@@ -578,8 +558,6 @@ namespace MVA.Toolbox.Public
                     }
                 }
             }
-
-            // 去重但保持出现顺序
             if (names.Count > 1)
             {
                 var seen = new HashSet<string>();
@@ -602,10 +580,7 @@ namespace MVA.Toolbox.Public
         }
 
         /// <summary>
-        /// 仅用于预览：根据 AAO MSM + RenameBlendShape 的规则，从“最终 BlendShape 名称”
-        /// 反向解析出应当在场景中实际设置权重的 SkinnedMeshRenderer 及其原始 BlendShape 名称。
-        /// 该方法完全基于当前组件状态即时计算，不做跨帧缓存，以便用户在任意时刻增删改
-        /// MSM / RB 组件后，下一次预览都能使用最新配置。
+        /// 混合形状目标结构体
         /// </summary>
         public struct BlendShapeTarget
         {
@@ -613,6 +588,9 @@ namespace MVA.Toolbox.Public
             public string originalName;
         }
 
+        /// <summary>
+        /// 根据 AAO MSM + RenameBlendShape 规则，将最终 BlendShape 名称反向解析到原始 SMR 与原始名称
+        /// </summary>
         public static List<BlendShapeTarget> ResolveOriginalBlendShapeTargets(GameObject target, string finalName)
         {
             var result = new List<BlendShapeTarget>();
@@ -639,7 +617,6 @@ namespace MVA.Toolbox.Public
                 }
             }
 
-            // 情况一：当前物体本身就是 MSM 节点，按 MSM + RB 规则解析
             if (mergeOnTarget != null)
             {
                 try
@@ -677,7 +654,6 @@ namespace MVA.Toolbox.Public
                         }
                     }
 
-                    // 读取 MSM 的 BlendShapeMode，使用名称判断是否为 RenameToAvoidConflict
                     bool renameMode = false;
                     if (blendShapeModeField != null)
                     {
@@ -695,7 +671,6 @@ namespace MVA.Toolbox.Public
 
                     if (renameMode)
                     {
-                        // MSM 为重命名模式：finalName = prefix(rendererName) + rbName
                         var usedPrefixes = new HashSet<string>();
                         var prefixMap = new Dictionary<SkinnedMeshRenderer, string>();
 
@@ -783,8 +758,6 @@ namespace MVA.Toolbox.Public
                     return result;
                 }
             }
-
-            // 情况二：当前物体不是 MSM 节点，仅考虑自身 SMR + 其上的 RenameBlendShape
             var selfSmr = target.GetComponent<SkinnedMeshRenderer>();
             if (selfSmr == null || selfSmr.sharedMesh == null)
                 return result;
@@ -846,5 +819,134 @@ namespace MVA.Toolbox.Public
 
             return rbName;
         }
+
+        // 判定物体是否为 Avatar 根（是否挂载 VRCAvatarDescriptor）
+        public static bool IsAvatarRoot(GameObject obj)
+        {
+            if (obj == null) return false;
+            return obj.GetComponent<VRCAvatarDescriptor>() != null;
+        }
+
+        // 判定物体是否包含有效 Animator（存在且 runtimeAnimatorController 非空）
+        public static bool HasAnimator(GameObject obj)
+        {
+            if (obj == null) return false;
+            var animator = obj.GetComponent<Animator>();
+            return animator != null && animator.runtimeAnimatorController != null;
+        }
+
+        // 从 Avatar/Animator 根对象收集所有相关 AnimatorController
+        public static List<AnimatorController> CollectControllersFromRoot(GameObject root, bool includeSpecialLayers = true)
+        {
+            var result = new List<AnimatorController>();
+            if (root == null) return result;
+
+            var descriptor = root.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor != null)
+            {
+                var baseLayers = descriptor.baseAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
+                for (int i = 0; i < baseLayers.Length; i++)
+                {
+                    var layer = baseLayers[i];
+                    if (layer.animatorController is AnimatorController ac && !result.Contains(ac))
+                    {
+                        result.Add(ac);
+                    }
+                }
+
+                if (includeSpecialLayers)
+                {
+                    var specialLayers = descriptor.specialAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
+                    for (int i = 0; i < specialLayers.Length; i++)
+                    {
+                        var layer = specialLayers[i];
+                        if (layer.animatorController is AnimatorController ac && !result.Contains(ac))
+                        {
+                            result.Add(ac);
+                        }
+                    }
+                }
+            }
+
+            var animator = root.GetComponent<Animator>();
+            if (animator != null && animator.runtimeAnimatorController is AnimatorController runtimeController)
+            {
+                if (!result.Contains(runtimeController))
+                {
+                    result.Add(runtimeController);
+                }
+            }
+
+            return result;
+        }
+
+        // 根据 Avatar/Animator 来源构建控制器显示名称列表
+        public static List<string> BuildControllerDisplayNames(VRCAvatarDescriptor descriptor, Animator animator, List<AnimatorController> controllers)
+        {
+            var names = new List<string>();
+            if (controllers == null || controllers.Count == 0)
+            {
+                return names;
+            }
+
+            for (int i = 0; i < controllers.Count; i++)
+            {
+                var controller = controllers[i];
+                if (controller == null)
+                {
+                    names.Add("(Missing Controller)");
+                    continue;
+                }
+
+                string label = null;
+
+                if (descriptor != null)
+                {
+                    var baseLayers = descriptor.baseAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
+                    for (int j = 0; j < baseLayers.Length; j++)
+                    {
+                        var layer = baseLayers[j];
+                        if (layer.animatorController == controller)
+                        {
+                            // 只显示层类型（如 FX、Base 之类），不再带 Base/Special 前缀
+                            label = $"{layer.type}: {controller.name}";
+                            break;
+                        }
+                    }
+
+                    if (label == null)
+                    {
+                        var specialLayers = descriptor.specialAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
+                        for (int j = 0; j < specialLayers.Length; j++)
+                        {
+                            var layer = specialLayers[j];
+                            if (layer.animatorController == controller)
+                            {
+                                // Special 层同样只显示层类型名称
+                                label = $"{layer.type}: {controller.name}";
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (label == null && animator != null && animator.runtimeAnimatorController == controller)
+                {
+                    label = "Animator: " + controller.name;
+                }
+
+                if (string.IsNullOrEmpty(label))
+                {
+                    label = "Animator Controller: " + controller.name;
+                }
+
+                names.Add(label);
+            }
+
+            return names;
+        }
+
+        // 以上 Clip 相关逻辑仅在旧版 VRChat Toolbox 中使用，此处不再提供公共跳转实现，
+        // 新的动画跳转与查找工具将由 FindAnimation 模块自行实现和维护。
     }
 }

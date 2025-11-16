@@ -7,6 +7,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
 {
     internal static class IntGroupSnapshotConverter
     {
+        // 将基线快照筛减为 WD On 模式所需目标（PreviewStateManager 定义于 PreviewStateManager.cs）
         public static PreviewStateManager.BaselineSnapshot ToWDOn(PreviewStateManager manager, PreviewStateManager.BaselineSnapshot snapshot)
         {
             var result = new PreviewStateManager.BaselineSnapshot
@@ -46,6 +47,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return result;
         }
 
+        // 根据现有快照重建 WD Off 模式目标，缺失条目使用首组模板
         public static PreviewStateManager.BaselineSnapshot ToWDOff(PreviewStateManager manager, PreviewStateManager.BaselineSnapshot snapshot)
         {
             var templates = new Dictionary<string, TargetItem>();
@@ -121,6 +123,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return result;
         }
 
+        // 判断目标在 WD On 模式下是否需要保留
         private static bool ShouldKeepItem(PreviewStateManager manager, TargetItem item)
         {
             if (item.controlType == 0)
@@ -147,6 +150,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return false;
         }
 
+        // 获取 GameObject 在 WD Off 模式下的默认激活状态
         private static bool ResolveActiveState(PreviewStateManager manager, GameObject target, int groupIndex, string key, Dictionary<(int groupIndex, string key), TargetItem> overrides)
         {
             if (groupIndex != 0 && overrides.TryGetValue((groupIndex, key), out var specific))
@@ -158,6 +162,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return target != null && target.activeSelf;
         }
 
+        // 计算 BlendShape 在 WD Off 模式的默认权重
         private static float ResolveBlendWeight(PreviewStateManager manager, TargetItem template, int groupIndex, string key, Dictionary<(int groupIndex, string key), TargetItem> overrides)
         {
             if (groupIndex != 0 && overrides.TryGetValue((groupIndex, key), out var specific))
@@ -166,6 +171,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return GetDefaultBlendWeight(manager, template);
         }
 
+        // 克隆 TargetItem，避免引用共享
         private static TargetItem CopyItem(TargetItem src)
         {
             return new TargetItem
@@ -181,6 +187,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             };
         }
 
+        // 组合控制类型与对象 ID 生成唯一键
         private static string BuildKey(TargetItem item)
         {
             int id = item.targetObject.GetInstanceID();
@@ -188,11 +195,13 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             return string.Concat(item.controlType, ":", id, ":", blend);
         }
 
+        // 将方向枚举转为权重值（0 或 100）
         private static float DirectionToWeight(int direction)
         {
             return direction == 0 ? 0f : 100f;
         }
 
+        // 获取 BlendShape 的默认权重，优先读取 PreviewStateManager 快照
         private static float GetDefaultBlendWeight(PreviewStateManager manager, TargetItem template)
         {
             if (template?.targetObject == null || string.IsNullOrEmpty(template.blendShapeName))

@@ -29,7 +29,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Integrations
                     return;
                 }
 
-                // 设计约束：QuickToggleConfig 只允许挂在 Avatar 根物体上，且每个 Avatar 只存在一个
+                // 设计约束：QuickToggleConfig 只挂在 Avatar 根物体上，每个 Avatar 仅存在一个
                 var configOnAvatar = context.AvatarRootObject.GetComponent<MVA.Toolbox.AvatarQuickToggle.QuickToggleConfig>();
                 if (configOnAvatar == null)
                 {
@@ -50,7 +50,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Integrations
                     return;
                 }
 
-                // 直接使用该组件上的层配置，保持列表顺序，即为执行顺序
+                // 使用组件上的层配置列表，保持顺序即为执行顺序
                 var aggregatedLayers = new List<MVA.Toolbox.AvatarQuickToggle.QuickToggleConfig.LayerConfig>();
                 foreach (var layer in configOnAvatar.layerConfigs)
                 {
@@ -64,14 +64,15 @@ namespace MVA.Toolbox.AvatarQuickToggle.Integrations
                     return;
                 }
 
+                // NDMF 模式生成逻辑由 NDMFApplyWorkflow 负责（定义于 NDMFApplyWorkflow.cs）
                 var workflow = new MVA.Toolbox.AvatarQuickToggle.Workflows.NDMFApplyWorkflow(
                     avatarDescriptor,
                     aggregatedLayers);
                 workflow.Execute(context);
 
-                // 为了避免 AAO 在运行时 Avatar 上看到 QuickToggleConfig 并报“未知组件”，
-                // 在 NDMF 的构建 Avatar（通常是 "XXX(Clone)"）上移除该组件。
-                // 场景中的原始 Avatar 不会被修改，因为 NDMF 使用的是克隆体。
+                // 为避免 AAO 在运行时 Avatar 上看到 QuickToggleConfig 报“未知组件”，
+                // 在 NDMF 构建出的 Avatar 克隆体（通常是 "XXX(Clone)"）上移除该组件；
+                // 场景中的原始 Avatar 不会被修改，因为 NDMF 使用克隆体进行构建。
                 var runtimeConfig = context.AvatarRootObject.GetComponent<MVA.Toolbox.AvatarQuickToggle.QuickToggleConfig>();
                 if (runtimeConfig != null && context.AvatarRootObject.name.EndsWith("(Clone)", StringComparison.Ordinal))
                 {

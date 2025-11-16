@@ -15,12 +15,14 @@ namespace MVA.Toolbox.AvatarQuickToggle
         public class LayerConfig
         {
             public string layerName;
-            public int layerType; // 0=Bool,1=Int,2=Float
+            // 开关类型：0=Bool,1=Int,2=Float
+            public int layerType;
             public string parameterName;
             public bool overwriteLayer;
             public bool overwriteParameter;
             public string clipSavePath;
-            public int writeDefaultSetting; // 0=Auto,1=On,2=Off
+            // Write Defaults 模式：0=Auto,1=On,2=Off
+            public int writeDefaultSetting;
             public bool createMenuControl;
             public string menuControlName;
             public string boolMenuItemName;
@@ -43,13 +45,17 @@ namespace MVA.Toolbox.AvatarQuickToggle
         public class TargetItem
         {
             public GameObject targetObject;
-            public int controlType; // 0=GameObject,1=BlendShape
+            // 目标控制类型：0=GameObject,1=BlendShape
+            public int controlType;
             public string blendShapeName;
-            public int onStateBlendShapeValue; // 0=100,1=0
-            public int onStateActiveSelection; // 0=Active,1=Inactive
+            // Bool ON 时的 BlendShape 值：0=100,1=0
+            public int onStateBlendShapeValue;
+            // Bool ON 时的 GameObject 状态：0=Active,1=Inactive
+            public int onStateActiveSelection;
             public bool splitBlendShape;
             public string secondaryBlendShapeName;
-            public int secondaryBlendShapeValue; // 0=100,1=0
+            // 第二个 BlendShape 的 ON 值：0=100,1=0
+            public int secondaryBlendShapeValue;
         }
 
         [Serializable]
@@ -95,8 +101,7 @@ namespace MVA.Toolbox.AvatarQuickToggle
                         error = "Bool layer requires at least one target";
                         return false;
                     }
-
-                    // Bool 层必须至少包含一个有效目标（targetObject 非空），否则视为无效配置
+                    // Bool 层至少需要一个 targetObject 非空的目标
                     bool hasValidBoolTarget = false;
                     for (int i = 0; i < config.boolTargets.Count; i++)
                     {
@@ -155,8 +160,7 @@ namespace MVA.Toolbox.AvatarQuickToggle
                         error = "Float layer requires at least one target";
                         return false;
                     }
-
-                    // Float 层同样要求至少一个有效目标（targetObject 非空），否则视为无效配置
+                    // Float 层同样至少需要一个 targetObject 非空的目标
                     bool hasValidFloatTarget = false;
                     for (int i = 0; i < config.floatTargets.Count; i++)
                     {

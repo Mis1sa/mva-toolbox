@@ -19,11 +19,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
         private readonly AnimationService _animationService = new AnimationService();
         private readonly VRCAssetsService _vrcAssetsService = new VRCAssetsService();
 
-        // 用于在 NDMF 中将作者侧菜单路径映射到克隆后的菜单：
-        // 1. _authoringMenuPathMap 记录作者侧菜单路径字符串 -> 作者侧菜单实例；
-        // 2. _menuCloneMap 记录作者侧菜单实例 -> 克隆出来的菜单实例。
-        // 这样在构建阶段就能根据用户在编辑器里选择的路径（来自作者侧菜单），
-        // 找到 NDMF 克隆菜单树中对应的目标菜单，而不是一律回落到根菜单。
+        // 作者侧菜单路径到克隆菜单的映射，用于在 NDMF 中保持菜单路径一致
         private System.Collections.Generic.Dictionary<string, VRCExpressionsMenu> _authoringMenuPathMap;
         private System.Collections.Generic.Dictionary<VRCExpressionsMenu, VRCExpressionsMenu> _menuCloneMap;
 
@@ -58,7 +54,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
                     + "'). Using runtime descriptor.");
             }
 
-            // 使用 NDMF 提供的 AssetContainer 获取或创建构建期资源：
+            // 使用 NDMF 的 AssetContainer 获取或创建构建期 FX/参数/菜单资源
             var fxController = GetOrCreateFXController(context, runtimeDescriptor);
             var expressionParameters = GetOrCreateExpressionParameters(context, runtimeDescriptor);
             var expressionsMenu = GetOrCreateExpressionsMenu(context, runtimeDescriptor);
@@ -103,6 +99,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
 
                 ResolveParameterName(toggleConfig.config, fxController, expressionParameters);
 
+                // FX 层创建逻辑复用 AnimationService（定义于 AnimationService.cs）
                 _animationService.CreateLayer(fxController, toggleConfig, null);
 
                 ApplyParametersAndMenu(toggleConfig.config, expressionParameters, expressionsMenu, context.AssetContainer);
@@ -270,6 +267,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
 
             try
             {
+                // 使用 VRCAssetsService 确保 NDMF 克隆参数表中有对应参数（方法定义于 VRCAssetsService.cs）
                 _vrcAssetsService.AddParameter(
                     expressionParameters,
                     layer.parameterName,
@@ -303,7 +301,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
                                 : (!string.IsNullOrWhiteSpace(layer.layerName) ? layer.layerName : layer.parameterName);
                             if (!string.IsNullOrWhiteSpace(controlName))
                             {
-                                // NDMF 工作流下不再为菜单分页创建物理目录，菜单及其“下一页”子菜单作为克隆菜单的子资产存在
+                                // NDMF 下 Bool 菜单及其“下一页”子菜单仅作为克隆菜单的子资产存在
                                 _vrcAssetsService.AddBoolMenuControl(targetMenu, controlName, layer.parameterName, null);
                             }
                         }
@@ -346,8 +344,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
             if (rootMenu == null) return null;
             if (string.IsNullOrEmpty(menuPath)) return rootMenu;
 
-            // 优先使用作者侧路径映射 + 克隆映射：
-            // menuPath 对应作者侧菜单 -> 再根据 _menuCloneMap 找到克隆菜单。
+            // 优先使用作者侧路径映射 + 克隆映射，将作者侧菜单路径定位到克隆菜单
             if (_authoringMenuPathMap != null && _menuCloneMap != null)
             {
                 if (_authoringMenuPathMap.TryGetValue(menuPath, out var authoringMenu) && authoringMenu != null)
@@ -359,14 +356,14 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
                 }
             }
 
-            // 兜底：若映射缺失或路径未命中，仍尝试在当前克隆菜单树上使用 SDK 提供的映射查找
+            // 兜底：若映射缺失或路径未命中，仍尝试在当前克隆菜单树上使用菜单映射查找（GetMenuMap 定义于 ToolboxUtils.cs）
             var map = ToolboxUtils.GetMenuMap(rootMenu);
             if (map != null && map.TryGetValue(menuPath, out var target) && target != null)
             {
                 return target;
             }
 
-            // 最终找不到时退回根菜单，避免 NRE
+            // 最终找不到时退回根菜单，避免空引用
             return rootMenu;
         }
 
@@ -461,9 +458,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
 
             if (existing != null && existing.parameters != null)
             {
-                // 原代码调用 existing.parameters.ToArray() 的意图是复制一份参数数组，
-                // 避免直接引用原数组。在这里 existing.parameters 本身已经是数组，
-                // 无需依赖 LINQ 的 ToArray 扩展方法，改为使用 Clone() 创建浅拷贝即可。
+                // 复制一份参数数组，避免直接引用原数组（使用 Clone 创建浅拷贝）
                 newParameters.parameters = (VRCExpressionParameters.Parameter[])existing.parameters.Clone();
             }
 
@@ -488,26 +483,23 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
                 newMenu = ScriptableObject.CreateInstance<VRCExpressionsMenu>();
                 newMenu.name = avatarDescriptor.gameObject.name + "_Menu_AQT";
 
-                // 作者侧没有菜单时，不存在路径映射与克隆映射
+                // 作者侧没有菜单时，不构建路径映射与克隆映射
                 _authoringMenuPathMap = null;
                 _menuCloneMap = null;
             }
             else
             {
-                // 为避免在 NDMF 中直接修改原始菜单资源，这里克隆一份菜单树。
-
-                // 记录作者侧菜单路径映射：key 与 QuickToggleWindow 中下拉显示的路径字符串一致，
-                // value 为作者侧对应的 VRCExpressionsMenu 实例。
+                // 为避免在 NDMF 中直接修改原始菜单资源，这里克隆一份菜单树
+                // 记录作者侧菜单路径映射：key 与 QuickToggleWindow 中下拉使用的路径字符串一致
                 _authoringMenuPathMap = ToolboxUtils.GetMenuMap(existing) 
                                          ?? new System.Collections.Generic.Dictionary<string, VRCExpressionsMenu>();
 
-                // 构建作者侧菜单实例 -> 克隆菜单实例的映射，以便后续根据路径查到克隆菜单
+                // 构建作者侧菜单实例 -> 克隆菜单实例的映射，便于根据路径找到克隆菜单
                 _menuCloneMap = new System.Collections.Generic.Dictionary<VRCExpressionsMenu, VRCExpressionsMenu>();
                 newMenu = CloneExpressionsMenu(existing, context.AssetContainer, _menuCloneMap);
             }
 
-            // 仅在我们“新建”菜单（existing == null）时在此处添加到 AssetContainer；
-            // 若是从现有菜单克隆，则由 CloneExpressionsMenu 负责向容器中注册克隆，避免重复 AddObjectToAsset
+            // 仅在“新建”菜单（existing == null）时在此处添加到 AssetContainer；克隆菜单由 CloneExpressionsMenu 负责注册
             if (existing == null && context.AssetContainer != null && !AssetDatabase.IsSubAsset(newMenu))
             {
                 AssetDatabase.AddObjectToAsset(newMenu, context.AssetContainer);

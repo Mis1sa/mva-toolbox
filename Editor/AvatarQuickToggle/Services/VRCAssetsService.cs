@@ -10,10 +10,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 {
     public class VRCAssetsService
     {
-        /// <summary>
-        /// 可识别为“翻页/更多”用途的子菜单名称列表。
-        /// 若需要调整识别的名称，只需修改此列表内容即可。
-        /// </summary>
+        // 用于识别“下一页/More”用途的子菜单名称列表
         private static readonly string[] OverflowSubMenuNames =
         {
             "下一页",
@@ -57,7 +54,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         {
             if (menu == null || string.IsNullOrWhiteSpace(controlName) || string.IsNullOrWhiteSpace(paramName)) return;
 
-            // 同名同类型（Toggle）控件：覆盖参数引用，而不是跳过
+            // 已存在同名 Toggle 控件时仅覆盖参数引用
             var existing = FindControl(menu, controlName, VRCExpressionsMenu.Control.ControlType.Toggle);
             if (existing != null)
             {
@@ -66,7 +63,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 return;
             }
 
-            // 新建控件时：若当前菜单已满，则尝试使用/创建“下一页”风格的子菜单进行分页
+            // 新建控件时：若当前菜单已满，则通过 EnsureMenuHasFreeSlot 进行分页
             var targetMenu = EnsureMenuHasFreeSlot(menu, assetFolder, controlName);
 
             var control = new VRCExpressionsMenu.Control
@@ -85,7 +82,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
             var submenu = CreateSubMenu(controlName, paramName, stateNames ?? new List<string>(), assetFolder);
 
-            // 同名同类型（SubMenu）控件：覆盖其子菜单引用
+            // 已存在同名 SubMenu 控件时仅覆盖其子菜单引用
             var existing = FindControl(menu, controlName, VRCExpressionsMenu.Control.ControlType.SubMenu);
             if (existing != null)
             {
@@ -94,7 +91,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 return;
             }
 
-            // 新建控件时：若当前菜单已满，则尝试使用/创建“下一页”风格的子菜单进行分页
+            // 新建控件时：若当前菜单已满，则通过 EnsureMenuHasFreeSlot 进行分页
             var targetMenu = EnsureMenuHasFreeSlot(menu);
 
             var control = new VRCExpressionsMenu.Control
@@ -111,11 +108,11 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         {
             if (menu == null || string.IsNullOrWhiteSpace(controlName) || string.IsNullOrWhiteSpace(paramName)) return;
 
-            // 同名同类型（RadialPuppet）控件：覆盖其 subParameters 绑定的参数名
+            // 已存在同名 RadialPuppet 控件时覆盖其 subParameters[0] 绑定的参数名
             var existing = FindControl(menu, controlName, VRCExpressionsMenu.Control.ControlType.RadialPuppet);
             if (existing != null)
             {
-                // 主 parameter 按原设计保留为空字符串，只更新 subParameters[0]
+                // 主 parameter 按原设计保持为空，仅更新 subParameters[0]
                 if (existing.subParameters == null || existing.subParameters.Length == 0)
                 {
                     existing.subParameters = new[] { new VRCExpressionsMenu.Control.Parameter { name = paramName } };
@@ -152,8 +149,9 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
             if (!string.IsNullOrEmpty(assetFolder))
             {
+                // 使用 ToolboxUtils 确保子菜单保存目录存在（方法定义于 ToolboxUtils.cs）
                 ToolboxUtils.EnsureFolderExists(assetFolder);
-                // Int 模式子菜单文件名：使用末级文件夹名（即最终层级名）作为资产名
+                // Int 子菜单文件名：默认使用末级文件夹名（即层级名）作为资产名
                 string folderName = assetFolder.Replace('\\', '/');
                 int idx = folderName.LastIndexOf('/') + 1;
                 if (idx >= 0 && idx < folderName.Length)
@@ -215,9 +213,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             menu.controls.Add(control);
             EditorUtility.SetDirty(menu);
 
-            // 旧逻辑会在此处将 subMenu 作为父菜单 asset 的子资产挂载。
-            // 现改为主要通过 CreateSubMenu 或 EnsureMenuHasFreeSlot 在指定目录创建独立 .asset，
-            // 因此这里不再强制把已有子菜单挂到当前菜单 asset 下，避免与独立菜单文件冲突。
+            // subMenu 资产的挂载由 CreateSubMenu/EnsureMenuHasFreeSlot 负责，此处只维护菜单控件列表
         }
 
         public bool ParameterExists(VRCExpressionParameters parameters, string paramName)
@@ -278,11 +274,6 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             return GetRemainingMenuSlots(menu) >= needed;
         }
 
-        /// <summary>
-        /// 在给定菜单及其“下一页/More”子菜单链中查找第一个仍有空余控件槽位的菜单。
-        /// 若当前菜单及整个链路都已满，则在链路末端自动创建/插入“下一页”子菜单，
-        /// 并将多余控件移动到新子菜单中，保证返回的菜单至少有 1 个空位。
-        /// </summary>
         private VRCExpressionsMenu EnsureMenuHasFreeSlot(VRCExpressionsMenu menu, string assetFolder = null, string baseName = null)
         {
             if (menu == null) return null;
@@ -291,11 +282,11 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
             while (true)
             {
-                // 当前位置仍有容量，直接使用
+                // 当前菜单仍有容量时直接返回
                 if (HasMenuCapacity(current))
                     return current;
 
-                // 尝试沿着已存在的“下一页/More”子菜单向下寻找可用菜单
+                // 沿着已存在的“下一页/More”子菜单链向下寻找有空位的菜单
                 var overflowCtrl = FindExistingOverflowSubMenu(current);
                 if (overflowCtrl != null && overflowCtrl.subMenu != null)
                 {
@@ -303,8 +294,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                     continue;
                 }
 
-                // 当前菜单没有可用的“下一页/More”子菜单，且自身已满：
-                // 在此菜单上执行一次分页，将第 8 项改为“下一页”子菜单，并把多余控件移入其中。
+                // 当前菜单没有可用“下一页/More”子菜单且已满：在此菜单上执行一次分页
                 if (current.controls == null)
                 {
                     current.controls = new List<VRCExpressionsMenu.Control>();
@@ -321,9 +311,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 
                 if (!string.IsNullOrEmpty(assetFolder))
                 {
-                    // 方案 B：在指定目录下创建独立的“下一页”菜单 .asset
-                    // 为避免多个菜单复用同一个 .asset 造成菜单图出现共享节点（从而导致 TraverseMenu 递归栈溢出），
-                    // 每次这里都为当前分页链创建一个全新的 asset，使用 GenerateUniqueAssetPath 保证路径唯一。
+                    // 在指定目录下创建独立的“下一页”菜单 .asset，每次生成唯一 asset，避免多个菜单复用导致菜单图共享节点
                     ToolboxUtils.EnsureFolderExists(assetFolder);
 
                     string fileBaseName = !string.IsNullOrWhiteSpace(baseName)
@@ -343,7 +331,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 }
                 else
                 {
-                    // 保留原来的子资产方式作为兼容路径（例如未提供 assetFolder 的旧调用）
+                    // 未提供 assetFolder 时保留旧的子资产方式
                     childMenu = ScriptableObject.CreateInstance<VRCExpressionsMenu>();
                     childMenu.controls = new List<VRCExpressionsMenu.Control>();
 
@@ -354,7 +342,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                     }
                 }
 
-                // 将第 8 个及之后的控件全部移动到子菜单中，当前菜单保留前 7 个
+                // 将第 8 个及之后的控件移动到子菜单中，当前菜单只保留前 7 个
                 while (current.controls.Count > 7)
                 {
                     var move = current.controls[7];
@@ -362,7 +350,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                     childMenu.controls.Add(move);
                 }
 
-                // 创建“下一页”风格的子菜单控件
+                // 创建“下一页/More”风格的子菜单控件
                 var overflowName = OverflowSubMenuNames != null && OverflowSubMenuNames.Length > 0
                     ? OverflowSubMenuNames[0]
                     : "Next";
@@ -379,16 +367,11 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 EditorUtility.SetDirty(current);
                 EditorUtility.SetDirty(childMenu);
 
-                // 新创建的子菜单此时控件数量可能仍然 >= 8，但上一轮 while 会继续处理，
-                // 最终会在链末端得到至少一个拥有空位的菜单。
+                // 若新子菜单仍已满，下一轮 while 会继续处理，最终在链末端得到至少一个有空位的菜单
                 current = childMenu;
             }
         }
 
-        /// <summary>
-        /// 在给定菜单中查找名称属于 OverflowSubMenuNames 且类型为 SubMenu 的控件。
-        /// 若找到，则返回该控件；否则返回 null。
-        /// </summary>
         private VRCExpressionsMenu.Control FindExistingOverflowSubMenu(VRCExpressionsMenu menu)
         {
             if (menu?.controls == null || OverflowSubMenuNames == null || OverflowSubMenuNames.Length == 0)

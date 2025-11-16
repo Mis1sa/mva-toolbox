@@ -15,13 +15,13 @@ namespace MVA.Toolbox.AvatarQuickToggle
 
         public void OnValidate()
         {
-            // 约束 1：组件必须挂在包含 VRCAvatarDescriptor 的 Avatar 根物体上
+            // 校验：组件必须挂在包含 VRCAvatarDescriptor 的 Avatar 根物体上
             var descriptorOnObject = GetComponent<VRCAvatarDescriptor>();
             if (descriptorOnObject == null)
             {
 #if UNITY_EDITOR
                 UnityEngine.Debug.LogWarning("[AQT] QuickToggleConfig 只能挂在包含 VRCAvatarDescriptor 的 Avatar 根物体上，本组件将被移除。", this);
-                // 在 Editor 下延迟销毁自身，避免在 OnValidate 期间直接修改对象集合导致错误
+                // 在 Editor 中延迟销毁本组件，避免 OnValidate 期间直接修改对象集合
                 UnityEditor.EditorApplication.delayCall += () =>
                 {
                     if (this != null)
@@ -33,11 +33,11 @@ namespace MVA.Toolbox.AvatarQuickToggle
                 return;
             }
 
-            // 保持 targetAvatar 与当前 Avatar 根对象一致
+            // 同步 targetAvatar 与当前 Avatar 根对象
             targetAvatar = descriptorOnObject;
 
 #if UNITY_EDITOR
-            // 约束 2：同一个 Avatar 场景实例上最多只允许存在一个 QuickToggleConfig
+            // 校验：同一个 Avatar 场景实例只允许存在一个 QuickToggleConfig
             var allConfigs = UnityEngine.Object.FindObjectsOfType<QuickToggleConfig>(true);
             foreach (var cfg in allConfigs)
             {
@@ -58,7 +58,7 @@ namespace MVA.Toolbox.AvatarQuickToggle
 #endif
             if (layerConfigs == null)
                 layerConfigs = new List<LayerConfig>();
-            // ensure unique layer names
+            // 确保每个 layerName 唯一
             for (int i = 0; i < layerConfigs.Count; i++)
             {
                 if (string.IsNullOrEmpty(layerConfigs[i].layerName)) continue;
@@ -93,15 +93,17 @@ namespace MVA.Toolbox.AvatarQuickToggle
         [Serializable]
         public class LayerConfig
         {
-            // 配置名称，用于在组件和“配置脚本”列表中显示，不影响 Animator 层级名称
+            // 配置显示名称，仅用于 Inspector 和窗口展示
             public string displayName;
             public string layerName;
-            public int layerType; // 0=Bool,1=Int,2=Float
+            // 开关类型：0=Bool,1=Int,2=Float
+            public int layerType;
             public string parameterName;
             public bool overwriteLayer;
             public bool overwriteParameter;
             public string clipSavePath;
-            public int writeDefaultSetting; // 0=Auto,1=On,2=Off
+            // Write Defaults 模式：0=Auto,1=On,2=Off
+            public int writeDefaultSetting;
             public bool createMenuControl;
             public string menuControlName;
             public string boolMenuItemName;
@@ -124,13 +126,18 @@ namespace MVA.Toolbox.AvatarQuickToggle
         public class TargetItemData
         {
             public GameObject targetObject;
+            // 目标控制类型
             public TargetControlType controlType;
             public string blendShapeName;
+            // GameObject 在 ON 时的状态
             public GameObjectState goState;
+            // BlendShape 在 ON 时的目标状态
             public BlendShapeState bsState;
+            // Float 变化方向
             public FloatDirection direction;
             public bool splitBlendShape;
             public string secondaryBlendShapeName;
+            // 第二个目标的 Float 变化方向
             public FloatDirection secondaryDirection;
         }
 
@@ -141,9 +148,13 @@ namespace MVA.Toolbox.AvatarQuickToggle
             public List<TargetItemData> targetItems = new List<TargetItemData>();
         }
 
+        // 控制目标类型
         public enum TargetControlType { GameObject, BlendShape }
+        // GameObject 开关状态
         public enum GameObjectState { Active, Inactive }
+        // BlendShape 端点状态
         public enum BlendShapeState { Zero, Full }
+        // Float 从 Zero 到 Full 或反向变化
         public enum FloatDirection { ZeroToFull, FullToZero }
     }
 }

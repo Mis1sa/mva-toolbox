@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0] - 2025-11-17
+
+### Changed
+
+- 将 **MVA Toolbox** 版本提升为 `0.1.0`，更新 Unity 包版本与 VPM 索引配置，并调整发布包名为 `mva-toolbox-0.1.0.zip`。
+
+### Fixed
+
+- 修复 **DigitDisplay Shader** 在 0–100 数值范围内的显示逻辑，确保 0–9 显示为单个数字、10–99 显示为两位数、100 显示为三位数，并优化 Cull Mode 等属性配置。
+- 修复 **Avatar Quick Toggle (AQT)** 在 **NDMF 工作流** 下直接修改原始 FX Animator Controller 的问题，改为在构建过程中克隆控制器并重定向到克隆资产，避免污染原始资源与参数。
+- 为 `QuickToggleConfig` 与 `AMPPositionProxy` 增加 `IEditorOnly` 标记，确保在 VRChat Avatar 构建与上传过程中自动剥离，避免“未知组件”警告和上传阻塞。
+- 改进 **Sync Main Camera to Scene View** 工具逻辑，使其在已经处于播放模式时也可以通过菜单即时启用或禁用同步，无需重新进入 Play 模式。
+
 ## [0.1.0-beta.1] - 2025-11-16
 
 ### Added

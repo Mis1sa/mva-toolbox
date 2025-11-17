@@ -17,6 +17,42 @@ namespace MVA.Toolbox.SyncCamera.Editor
             EditorPrefs.SetBool(EditorPrefsKey, isEnabled);
             Menu.SetChecked(MenuPath, isEnabled);
             Debug.Log($"[SyncCamera] 主摄像机与场景视图的同步功能已{(isEnabled ? "启用" : "禁用")}");
+
+            if (EditorApplication.isPlaying)
+            {
+                if (isEnabled)
+                {
+                    // 确保存在主摄像机
+                    if (Camera.main == null)
+                    {
+                        Debug.LogWarning("[SyncCamera] 场景中没有主摄像机，已自动创建一个 Main Camera。");
+                        var newCamera = new GameObject("Main Camera");
+                        newCamera.tag = "MainCamera";
+                        newCamera.AddComponent<Camera>();
+                        newCamera.transform.position = new Vector3(0f, 1f, -10f);
+                        newCamera.transform.rotation = Quaternion.identity;
+                    }
+
+                    var mainCam = Camera.main;
+                    if (mainCam != null && mainCam.GetComponent<SyncCameraComponent>() == null)
+                    {
+                        mainCam.gameObject.AddComponent<SyncCameraComponent>();
+                    }
+                }
+                else
+                {
+                    // 在播放模式下禁用时，移除主摄像机上的同步组件
+                    var mainCam = Camera.main;
+                    if (mainCam != null)
+                    {
+                        var comp = mainCam.GetComponent<SyncCameraComponent>();
+                        if (comp != null)
+                        {
+                            Object.DestroyImmediate(comp);
+                        }
+                    }
+                }
+            }
         }
 
         [MenuItem(MenuPath, true)]

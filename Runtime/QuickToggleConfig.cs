@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
+using VRC.SDKBase;
 
 namespace MVA.Toolbox.AvatarQuickToggle
 {
     [DisallowMultipleComponent]
     [AddComponentMenu("Avatar Quick Toggle")]
-    public class QuickToggleConfig : MonoBehaviour
+    public class QuickToggleConfig : MonoBehaviour, IEditorOnly
     {
         public VRCAvatarDescriptor targetAvatar;
         public List<LayerConfig> layerConfigs = new List<LayerConfig>();

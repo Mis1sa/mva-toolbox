@@ -412,7 +412,34 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
 
             if (existingController != null)
             {
-                return existingController;
+                // 旧逻辑：直接复用作者侧的 FX 控制器资产，导致 NDMF 构建过程中对 FX 的修改会污染原控制器。
+                // 为避免修改原始资源，这里改为克隆一份新的 AnimatorController 并挂载到 AssetContainer，
+                // 同时将 Avatar 的 FX 图层重定向到该克隆控制器。
+
+                // 之前尝试通过 ScriptableObject.CreateInstance 创建 AnimatorController，会导致编译错误，
+                // 因为 AnimatorController 并不是 ScriptableObject。这里改为直接使用 new AnimatorController() 创建实例。
+                var clonedController = new AnimatorController
+                {
+                    name = existingController.name + "_AQT"
+                };
+
+                // 使用序列化拷贝复制原控制器的层、参数等配置
+                EditorUtility.CopySerialized(existingController, clonedController);
+
+                if (context.AssetContainer != null)
+                {
+                    AssetDatabase.AddObjectToAsset(clonedController, context.AssetContainer);
+                }
+
+                if (fxIndex >= 0 && fxIndex < layers.Length)
+                {
+                    var fxLayer = layers[fxIndex];
+                    fxLayer.animatorController = clonedController;
+                    layers[fxIndex] = fxLayer;
+                    avatarDescriptor.baseAnimationLayers = layers;
+                }
+
+                return clonedController;
             }
 
             var controller = new AnimatorController

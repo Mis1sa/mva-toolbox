@@ -70,13 +70,21 @@ namespace MVA.Toolbox.AvatarQuickToggle.Integrations
                     aggregatedLayers);
                 workflow.Execute(context);
 
-                // 为避免 AAO 在运行时 Avatar 上看到 QuickToggleConfig 报“未知组件”，
-                // 在 NDMF 构建出的 Avatar 克隆体（通常是 "XXX(Clone)"）上移除该组件；
-                // 场景中的原始 Avatar 不会被修改，因为 NDMF 使用克隆体进行构建。
-                var runtimeConfig = context.AvatarRootObject.GetComponent<MVA.Toolbox.AvatarQuickToggle.QuickToggleConfig>();
-                if (runtimeConfig != null && context.AvatarRootObject.name.EndsWith("(Clone)", StringComparison.Ordinal))
+                // 为避免 VRChat Avatar SDK 在运行时 Avatar 上看到 QuickToggleConfig 报“未知组件”并阻止上传，
+                // 需要在 NDMF 构建出的 Avatar 对象上移除所有 QuickToggleConfig 组件。
+                // 这里不再依赖名称是否以 "(Clone)" 结尾，而是直接在 BuildContext 提供的 AvatarRootObject 上
+                // 递归查找并销毁 QuickToggleConfig；该对象是构建用克隆体，场景中的原始 Avatar 不会被修改。
+                var runtimeConfigs = context.AvatarRootObject.GetComponentsInChildren<MVA.Toolbox.AvatarQuickToggle.QuickToggleConfig>(true);
+                if (runtimeConfigs != null && runtimeConfigs.Length > 0)
                 {
-                    UnityEngine.Object.DestroyImmediate(runtimeConfig);
+                    for (int i = 0; i < runtimeConfigs.Length; i++)
+                    {
+                        var cfg = runtimeConfigs[i];
+                        if (cfg != null)
+                        {
+                            UnityEngine.Object.DestroyImmediate(cfg);
+                        }
+                    }
                 }
             });
         }

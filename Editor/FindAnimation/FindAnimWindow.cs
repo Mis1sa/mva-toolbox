@@ -11,7 +11,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
     // Find Anim 主窗口，用于按对象与属性查找相关动画剪辑
     public class FindAnimWindow : EditorWindow
     {
-        // 顶部：目标 Avatar/带 Animator 根物体
+        // 目标 Avatar/带 Animator 根物体
         private GameObject targetRoot;
         private VRCAvatarDescriptor descriptor;
         private Animator animator;
@@ -21,7 +21,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
         private readonly List<string> controllerNames = new List<string>();
         private int selectedControllerIndex = 0;
 
-        // 查找区域：被动画控制的对象与属性分组
+        // 被动画控制的对象与属性分组
         private Object selectedAnimatedObject;
         private string selectedPath;
 
@@ -45,14 +45,11 @@ namespace MVA.Toolbox.FindAnimation.Editor
         public static void Open()
         {
             var window = GetWindow<FindAnimWindow>("Find Anim");
-            window.minSize = new Vector2(550f, 600f);
+            window.minSize = new Vector2(500f, 600f);
         }
 
         private void OnGUI()
         {
-            // 顶部标题条，贴近 AQT 风格
-            DrawHeader();
-
             mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
 
             DrawTargetSelection();
@@ -65,15 +62,6 @@ namespace MVA.Toolbox.FindAnimation.Editor
             }
 
             EditorGUILayout.EndScrollView();
-        }
-
-        private void DrawHeader()
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.toolbar);
-            GUILayout.Space(2f);
-            EditorGUILayout.LabelField("Find Anim", EditorStyles.boldLabel);
-            GUILayout.Space(2f);
-            EditorGUILayout.EndVertical();
         }
 
         private void DrawSearchScope()
@@ -229,9 +217,9 @@ namespace MVA.Toolbox.FindAnimation.Editor
         private void DrawAnimatedObjectSelector()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("被动画控制的对象", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("被动画控制的物体", EditorStyles.boldLabel);
 
-            var newObj = EditorGUILayout.ObjectField("目标对象", selectedAnimatedObject, typeof(Object), true);
+            var newObj = EditorGUILayout.ObjectField("目标物体", selectedAnimatedObject, typeof(Object), true);
             if (newObj != selectedAnimatedObject)
             {
                 // 规范化目标对象：限制在当前 Avatar/Animator 根下，并处理 AAO MergeSkinnedMesh
@@ -702,6 +690,10 @@ namespace MVA.Toolbox.FindAnimation.Editor
             }
 
             if (go == null)
+                return null;
+
+            // 不允许将 Avatar/Animator 根物体本身作为“被动画控制的物体”
+            if (go == rootGo)
                 return null;
 
             // 必须在当前根层级内

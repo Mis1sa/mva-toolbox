@@ -4,24 +4,17 @@
 
 MVA Toolbox 是一个 VRChat Avatar 工具包，目前包含以下功能：
 
-## 功能概览
-
-- **Avatar Quick Toggle (AQT)**
+- **Avatar Quick Toggle**
   - 一键生成 Bool / Int / Float 类型的切换层
-  - 自动创建 / 复用 FX Animator、Expression Parameters、Expressions Menu
-  - 菜单分页：遵守 VRChat 每页最多 8 项的限制，自动创建“下一页”子菜单
-  - 支持两种工作流：
-    - **Direct 工作流**：直接修改项目中的控制器 / 菜单 / 参数资源
-    - **NDMF 工作流**：在构建阶段通过 NDMF 非破坏式生成切换层
-  - 支持与 Avatar Optimizer (AAO) 协作的 BlendShape 解析（存在 AAO 时自动增强）
+
+- **Animator Controller Rebuilt**
+  - 基于原 VRCTool_ACR 工具，深度重构 AnimatorController：复制层、状态机、状态、BlendTree 与 StateMachineBehaviour，并尽量修复丢失的状态机与转换结构。
 
 - **Find Anim**
   - 按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip
-  - 集成 **AQT 配置提示**：在结果下方显示影响当前物体的 AQT Layer 配置
-  - 支持识别 AAO MergeSkinnedMesh / RenameBlendShape 合并和改名后的 BlendShape 目标
 
 - **Jump To Animator**
-  - 在 Project 中选中 AnimationClip，右键菜单跳转到引用它的 Animator / Avatar
+  - 在资产中选中 AnimationClip，右键菜单跳转到引用它的 Animator / Avatar
 
 - **Switch Anim**
   - 在 Animation 窗口中，通过菜单或快捷键在当前物体的 AnimationClip 列表中前后切换
@@ -29,7 +22,17 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，目前包含以下功能：
 - **Sync Main Camera to Scene View**
   - 在播放模式下，将主摄像机的位置和旋转对齐到 Scene 视图相机
 
-## 依赖
+- **Material Refit**
+  - 批量替换材质属性，如从旧着色器迁移到新着色器时，将常用属性重新映射到新材质上，减少手工逐个材质调整的工作量。
+
+- **Quick Add Parameter**
+  - 在 AnimatorController 中快速添加参数，并可针对 Avatar / Animator 资产批量补齐常用参数，避免手动反复打开 Animator 窗口进行参数维护。
+
+- **Quick State**
+  - 提供 Animator 状态的拆分与合并工具，可在同一层内将状态拆成“头/尾”两段，或将两个状态合并为一个，并自动调整相关 Transition 结构。
+
+- **Quick Transition**
+  - 批量查看和编辑某一层或某个状态机中的 Transition 设置，用于快速统一过渡时间、Exit Time 或条件配置。
 
 - **必需**
   - Unity **2022.3** 及以上
@@ -41,8 +44,6 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，目前包含以下功能：
   - Avatar Optimizer：兼容其BlendShape重命名相关功能
 
 ## 安装与使用
-
-### 推荐方式：通过 VCC 安装
 
 1. 确保已安装最新版 VCC。
 2. 在浏览器中点击下方链接，并同意打开 VCC：  

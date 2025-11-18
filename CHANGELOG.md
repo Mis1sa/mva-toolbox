@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0] - 2025-11-18
+
+### Added
+
+- 集成 **Anim Controller Rebuilt**工具：支持深度复制 AnimatorController、状态机、状态、BlendTree 与 VRC Avatar Parameter Driver 组件。
+- 新增 **Material Refit** 工具：支持批量替换材质属性，例如从旧着色器迁移到新着色器时，将常用属性重新映射到新材质上。
+- 新增 **Quick Add Parameter** 工具：在 AnimatorController 中快速添加常用参数，并支持针对 Avatar / Animator 资产批量补齐参数。
+- 新增 **Quick State** 工具：提供 Animator 状态的拆分与合并功能，自动调整相关 Transition 结构。
+- 新增 **Quick Transition** 工具：批量查看和编辑某层或状态机中的 Transition，用于统一过渡时间、Exit Time 与条件配置。
+
 ## [0.1.0] - 2025-11-17
 
 ### Changed
@@ -8,9 +18,8 @@
 
 ### Fixed
 
-- 修复 **DigitDisplay Shader** 在 0–100 数值范围内的显示逻辑，确保 0–9 显示为单个数字、10–99 显示为两位数、100 显示为三位数，并优化 Cull Mode 等属性配置。
 - 修复 **Avatar Quick Toggle (AQT)** 在 **NDMF 工作流** 下直接修改原始 FX Animator Controller 的问题，改为在构建过程中克隆控制器并重定向到克隆资产，避免污染原始资源与参数。
-- 为 `QuickToggleConfig` 与 `AMPPositionProxy` 增加 `IEditorOnly` 标记，确保在 VRChat Avatar 构建与上传过程中自动剥离，避免“未知组件”警告和上传阻塞。
+- 为 `QuickToggleConfig` 增加 `IEditorOnly` 标记，确保在 VRChat Avatar 构建与上传过程中自动剥离，避免“未知组件”警告和上传阻塞。
 - 改进 **Sync Main Camera to Scene View** 工具逻辑，使其在已经处于播放模式时也可以通过菜单即时启用或禁用同步，无需重新进入 Play 模式。
 
 ## [0.1.0-beta.1] - 2025-11-16

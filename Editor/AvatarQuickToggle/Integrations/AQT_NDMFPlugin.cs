@@ -70,10 +70,6 @@ namespace MVA.Toolbox.AvatarQuickToggle.Integrations
                     aggregatedLayers);
                 workflow.Execute(context);
 
-                // 为避免 VRChat Avatar SDK 在运行时 Avatar 上看到 QuickToggleConfig 报“未知组件”并阻止上传，
-                // 需要在 NDMF 构建出的 Avatar 对象上移除所有 QuickToggleConfig 组件。
-                // 这里不再依赖名称是否以 "(Clone)" 结尾，而是直接在 BuildContext 提供的 AvatarRootObject 上
-                // 递归查找并销毁 QuickToggleConfig；该对象是构建用克隆体，场景中的原始 Avatar 不会被修改。
                 var runtimeConfigs = context.AvatarRootObject.GetComponentsInChildren<MVA.Toolbox.AvatarQuickToggle.QuickToggleConfig>(true);
                 if (runtimeConfigs != null && runtimeConfigs.Length > 0)
                 {

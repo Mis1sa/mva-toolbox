@@ -44,7 +44,7 @@ namespace MVA.Toolbox.QuickAddParameter.UI
 
         QuickAddParameterService _service;
 
-        [MenuItem("Tools/MVA Toolbox/Quick Add Parameter", false, 6)]
+        [MenuItem("Tools/MVA Toolbox/Quick Add Parameter", false, 5)]
         public static void Open()
         {
             var w = GetWindow<QuickAddParameterWindow>("Quick Add Parameter");

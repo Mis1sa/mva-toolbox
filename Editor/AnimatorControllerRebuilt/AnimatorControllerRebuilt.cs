@@ -96,12 +96,12 @@ namespace MVA.Toolbox.AnimatorControllerRebuilt
         
         private void DrawMainContent()
         {
-            EditorGUILayout.LabelField("请将您的 Animator Controller 拖到此处:", EditorStyles.boldLabel);
-            sourceController = (AnimatorController)EditorGUILayout.ObjectField("Source Controller", sourceController, typeof(AnimatorController), false);
+            EditorGUILayout.LabelField("请将需要重构的 动画控制器 拖到此处:", EditorStyles.boldLabel);
+            sourceController = (AnimatorController)EditorGUILayout.ObjectField("控制器", sourceController, typeof(AnimatorController), false);
             
             if (sourceController == null)
             {
-                EditorGUILayout.HelpBox("请将 AnimatorController 拖到上方栏位。", MessageType.Info);
+                EditorGUILayout.HelpBox("请将 动画控制器 拖到上方栏位。", MessageType.Info);
                 return;
             }
             

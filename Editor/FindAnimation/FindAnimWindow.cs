@@ -41,7 +41,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
         private Vector2 mainScroll;
 
-        [MenuItem("Tools/MVA Toolbox/Find Anim", false, 2)]
+        [MenuItem("Tools/MVA Toolbox/Find Anim", false, 6)]
         public static void Open()
         {
             var window = GetWindow<FindAnimWindow>("Find Anim");
@@ -150,7 +150,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("目标对象", EditorStyles.boldLabel);
 
-            var newTarget = (GameObject)EditorGUILayout.ObjectField("Avatar / 带 Animator", targetRoot, typeof(GameObject), true);
+            var newTarget = (GameObject)EditorGUILayout.ObjectField("Avatar / 带 Animator 的物体", targetRoot, typeof(GameObject), true);
             if (newTarget != targetRoot)
             {
                 targetRoot = newTarget;
@@ -160,7 +160,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
             if (targetRoot == null)
             {
-                EditorGUILayout.HelpBox("请拖入一个带有 VRCAvatarDescriptor 或 Animator 组件的物体。", MessageType.Info);
+                EditorGUILayout.HelpBox("请拖入一个 Avatar 或带 Animator 组件的物体。", MessageType.Info);
             }
 
             EditorGUILayout.EndVertical();

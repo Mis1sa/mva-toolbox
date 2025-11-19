@@ -2,19 +2,18 @@
 
 `com.mis1sa.mva-toolbox`
 
-MVA Toolbox 是一个 VRChat Avatar 工具包，目前包含以下功能：
+MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时的工作，目前包含以下功能：
 
 - **Avatar Quick Toggle**
   - 一键生成 Bool / Int / Float 类型的切换层
 
 - **Animator Controller Rebuilt**
-  - 基于原 VRCTool_ACR 工具，深度重构 AnimatorController：复制层、状态机、状态、BlendTree 与 StateMachineBehaviour，并尽量修复丢失的状态机与转换结构。
+  - 重构 AnimatorController：复制层、状态机、状态、BlendTree 与 StateMachineBehaviour，用于修复 AnimatorController 的状态机与转换结构。
 
 - **Find Anim**
   - 按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip
-
-- **Jump To Animator**
-  - 在资产中选中 AnimationClip，右键菜单跳转到引用它的 Animator / Avatar
+  - **Jump To Animator**
+    - 在资产中选中 AnimationClip，右键菜单跳转到引用它的 Animator / Avatar
 
 - **Switch Anim**
   - 在 Animation 窗口中，通过菜单或快捷键在当前物体的 AnimationClip 列表中前后切换
@@ -24,6 +23,12 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，目前包含以下功能：
 
 - **Material Refit**
   - 批量替换材质属性，如从旧着色器迁移到新着色器时，将常用属性重新映射到新材质上，减少手工逐个材质调整的工作量。
+
+- **Anim Path Redirect**
+  - 对 Animator 中的曲线路径进行追踪与重定向，支持批量修复层级变更、组件缺失与 BlendShape 名称变更导致的动画丢失问题。
+
+- **Bake Default Anim**
+  - 将 Avatar 当前默认姿态（Transform / SkinnedMeshRenderer / Renderer 等）烘焙为 AnimationClip，用于在切换控制器或合并状态机前保存默认状态。
 
 - **Quick Add Parameter**
   - 在 AnimatorController 中快速添加参数，并可针对 Avatar / Animator 资产批量补齐常用参数，避免手动反复打开 Animator 窗口进行参数维护。
@@ -38,7 +43,7 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，目前包含以下功能：
   - Unity **2022.3** 及以上
   - VRChat Avatars SDK：`com.vrchat.avatars`
   - NDMF：`nadena.dev.ndmf`  
-    > 通过 VCC 安装本包时，会自动一并安装其依赖（包含 NDMF），请优先使用 VCC 安装。
+    > 通过 VCC 安装本包时，会自动一并安装其依赖，请优先使用 VCC 安装。
 
 - **可选**
   - Avatar Optimizer：兼容其BlendShape重命名相关功能

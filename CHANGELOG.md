@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0] - 2025-11-19
+
+### Added
+
+- 新增 **Anim Path Redirect** 工具：对 Animator 中的曲线路径进行追踪与重定向，支持批量修复层级变更、组件缺失与 BlendShape 名称变更导致的动画丢失问题。
+- 新增 **Bake Default Anim** 工具：将 Avatar 当前默认姿态（Transform / SkinnedMeshRenderer / Renderer 等）烘焙为 AnimationClip，用于在切换控制器或合并状态机前保存默认状态。
+
 ## [0.2.0] - 2025-11-18
 
 ### Added

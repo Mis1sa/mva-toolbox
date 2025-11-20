@@ -74,7 +74,7 @@ namespace MVA.Toolbox.QuickState.UI
         public static void Open()
         {
             var window = GetWindow<QuickStateWindow>("Quick State");
-            window.minSize = new Vector2(500f, 600f);
+            window.minSize = new Vector2(500f, 550f);
         }
 
         void OnEnable()
@@ -89,37 +89,36 @@ namespace MVA.Toolbox.QuickState.UI
         {
             EnsureResolvedStatesValid();
 
-            _mainScroll = EditorGUILayout.BeginScrollView(_mainScroll);
-
-            DrawTargetSelection();
-
-            GUILayout.Space(4f);
-
-            if (_controllers.Count > 0)
+            _mainScroll = ToolboxUtils.ScrollView(_mainScroll, () =>
             {
-                DrawControllerAndLayerSelection();
+                DrawTargetSelection();
 
                 GUILayout.Space(4f);
 
-                DrawModeSelection();
-
-                GUILayout.Space(6f);
-
                 if (_controllers.Count > 0)
                 {
-                    switch (_mode)
+                    DrawControllerAndLayerSelection();
+
+                    GUILayout.Space(4f);
+
+                    DrawModeSelection();
+
+                    GUILayout.Space(6f);
+
+                    if (_controllers.Count > 0)
                     {
-                        case ToolMode.Split:
-                            DrawSplitModeArea();
-                            break;
-                        case ToolMode.Merge:
-                            DrawMergeModeArea();
-                            break;
+                        switch (_mode)
+                        {
+                            case ToolMode.Split:
+                                DrawSplitModeArea();
+                                break;
+                            case ToolMode.Merge:
+                                DrawMergeModeArea();
+                                break;
+                        }
                     }
                 }
-            }
-
-            EditorGUILayout.EndScrollView();
+            });
         }
 
         // 顶部目标对象区域：选择 Avatar/Animator/控制器，并刷新内部缓存
@@ -513,7 +512,6 @@ namespace MVA.Toolbox.QuickState.UI
 
             GUILayout.Space(4f);
 
-            // 头部/尾部两列固定按窗口宽度等分渲染
             float totalWidth = position.width;
             float columnWidth = Mathf.Max(0f, (totalWidth - 40f) * 0.5f);
 
@@ -521,39 +519,14 @@ namespace MVA.Toolbox.QuickState.UI
 
             GUILayout.Space(4f);
 
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.Width(columnWidth));
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.Width(columnWidth), GUILayout.ExpandHeight(true));
             EditorGUILayout.LabelField("头部 Transition", EditorStyles.boldLabel);
-            _splitScrollIncoming = EditorGUILayout.BeginScrollView(_splitScrollIncoming, GUILayout.Height(140f));
-
-            // 左列：当前归属头部的 Transition（进站 / Any / 已移动到头部的尾部出站）
-            // 对进站 / Any：勾选表示从头部移动到尾部；对尾部出站：取消勾选表示从头部移回尾部
-            for (int i = 0; i < _splitIncomingAdjustments.Count; i++)
+            _splitScrollIncoming = ToolboxUtils.ScrollView(_splitScrollIncoming, () =>
             {
-                var adj = _splitIncomingAdjustments[i];
-                bool inHead = !adj.ShouldMove;
-                if (!inHead)
-                {
-                    continue;
-                }
 
-                EditorGUILayout.BeginHorizontal();
-                bool moveToTail = EditorGUILayout.Toggle(false, GUILayout.Width(20f));
-                EditorGUILayout.LabelField(adj.DisplayName);
-                if (moveToTail)
+                for (int i = 0; i < _splitIncomingAdjustments.Count; i++)
                 {
-                    adj.ShouldMove = true; // 移到尾部
-                    _splitIncomingAdjustments[i] = adj;
-                }
-                EditorGUILayout.EndHorizontal();
-            }
-
-            // Any State 进站同样遵循左列/右列的移动规则
-            if (_splitAnyAdjustments.Count > 0)
-            {
-                EditorGUILayout.LabelField("Any State", EditorStyles.boldLabel);
-                for (int i = 0; i < _splitAnyAdjustments.Count; i++)
-                {
-                    var adj = _splitAnyAdjustments[i];
+                    var adj = _splitIncomingAdjustments[i];
                     bool inHead = !adj.ShouldMove;
                     if (!inHead)
                     {
@@ -566,73 +539,72 @@ namespace MVA.Toolbox.QuickState.UI
                     if (moveToTail)
                     {
                         adj.ShouldMove = true; // 移到尾部
-                        _splitAnyAdjustments[i] = adj;
+                        _splitIncomingAdjustments[i] = adj;
                     }
                     EditorGUILayout.EndHorizontal();
                 }
-            }
 
-            // 尾部自身出站中，已标记移动到头部的条目（ShouldMove == true）显示在左列
-            if (_splitOutgoingAdjustments.Count > 0)
-            {
-                for (int i = 0; i < _splitOutgoingAdjustments.Count; i++)
+                if (_splitAnyAdjustments.Count > 0)
                 {
-                    var adj = _splitOutgoingAdjustments[i];
-                    bool inHead = adj.ShouldMove;
-                    if (!inHead)
+                    EditorGUILayout.LabelField("Any State", EditorStyles.boldLabel);
+                    for (int i = 0; i < _splitAnyAdjustments.Count; i++)
                     {
-                        continue;
-                    }
+                        var adj = _splitAnyAdjustments[i];
+                        bool inHead = !adj.ShouldMove;
+                        if (!inHead)
+                        {
+                            continue;
+                        }
 
-                    EditorGUILayout.BeginHorizontal();
-                    // 在头部列中显示为“已勾选”，取消勾选则移回尾部
-                    bool keepInHead = EditorGUILayout.Toggle(true, GUILayout.Width(20f));
-                    EditorGUILayout.LabelField(adj.DisplayName);
-                    if (!keepInHead)
-                    {
-                        adj.ShouldMove = false; // 移回尾部（对尾部出站来说 false 表示仍在尾部）
-                        _splitOutgoingAdjustments[i] = adj;
+                        EditorGUILayout.BeginHorizontal();
+                        bool moveToTail = EditorGUILayout.Toggle(false, GUILayout.Width(20f));
+                        EditorGUILayout.LabelField(adj.DisplayName);
+                        if (moveToTail)
+                        {
+                            adj.ShouldMove = true; // 移到尾部
+                            _splitAnyAdjustments[i] = adj;
+                        }
+                        EditorGUILayout.EndHorizontal();
                     }
-                    EditorGUILayout.EndHorizontal();
                 }
-            }
-            EditorGUILayout.EndScrollView();
+
+
+                if (_splitOutgoingAdjustments.Count > 0)
+                {
+                    for (int i = 0; i < _splitOutgoingAdjustments.Count; i++)
+                    {
+                        var adj = _splitOutgoingAdjustments[i];
+                        bool inHead = adj.ShouldMove;
+                        if (!inHead)
+                        {
+                            continue;
+                        }
+
+                        EditorGUILayout.BeginHorizontal();
+
+                        bool keepInHead = EditorGUILayout.Toggle(true, GUILayout.Width(20f));
+                        EditorGUILayout.LabelField(adj.DisplayName);
+                        if (!keepInHead)
+                        {
+                            adj.ShouldMove = false;
+                            _splitOutgoingAdjustments[i] = adj;
+                        }
+                        EditorGUILayout.EndHorizontal();
+                    }
+                }
+            }, GUILayout.ExpandHeight(true));
             EditorGUILayout.EndVertical();
 
             GUILayout.Space(4f);
 
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.Width(columnWidth));
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.Width(columnWidth), GUILayout.ExpandHeight(true));
             EditorGUILayout.LabelField("尾部 Transition", EditorStyles.boldLabel);
-            _splitScrollOutgoing = EditorGUILayout.BeginScrollView(_splitScrollOutgoing, GUILayout.Height(140f));
-
-            // 右列：当前归属尾部的 Transition（进站 / Any / 未移动的尾部出站）
-            for (int i = 0; i < _splitIncomingAdjustments.Count; i++)
+            _splitScrollOutgoing = ToolboxUtils.ScrollView(_splitScrollOutgoing, () =>
             {
-                var adj = _splitIncomingAdjustments[i];
-                bool inTail = adj.ShouldMove;
-                if (!inTail)
-                {
-                    continue;
-                }
 
-                EditorGUILayout.BeginHorizontal();
-                bool keepInTail = EditorGUILayout.Toggle(true, GUILayout.Width(20f));
-                EditorGUILayout.LabelField(adj.DisplayName);
-                if (!keepInTail)
+                for (int i = 0; i < _splitIncomingAdjustments.Count; i++)
                 {
-                    adj.ShouldMove = false; // 移回头部
-                    _splitIncomingAdjustments[i] = adj;
-                }
-                EditorGUILayout.EndHorizontal();
-            }
-
-            // Any State 在尾部时遵循与进站相同的移动规则
-            if (_splitAnyAdjustments.Count > 0)
-            {
-                EditorGUILayout.LabelField("Any State", EditorStyles.boldLabel);
-                for (int i = 0; i < _splitAnyAdjustments.Count; i++)
-                {
-                    var adj = _splitAnyAdjustments[i];
+                    var adj = _splitIncomingAdjustments[i];
                     bool inTail = adj.ShouldMove;
                     if (!inTail)
                     {
@@ -645,36 +617,60 @@ namespace MVA.Toolbox.QuickState.UI
                     if (!keepInTail)
                     {
                         adj.ShouldMove = false; // 移回头部
-                        _splitAnyAdjustments[i] = adj;
+                        _splitIncomingAdjustments[i] = adj;
                     }
                     EditorGUILayout.EndHorizontal();
                 }
-            }
 
-            // 尾部自身出站中，未移动的条目（ShouldMove == false）显示在右列
-            if (_splitOutgoingAdjustments.Count > 0)
-            {
-                for (int i = 0; i < _splitOutgoingAdjustments.Count; i++)
+
+                if (_splitAnyAdjustments.Count > 0)
                 {
-                    var adj = _splitOutgoingAdjustments[i];
-                    bool inTail = !adj.ShouldMove;
-                    if (!inTail)
+                    EditorGUILayout.LabelField("Any State", EditorStyles.boldLabel);
+                    for (int i = 0; i < _splitAnyAdjustments.Count; i++)
                     {
-                        continue;
-                    }
+                        var adj = _splitAnyAdjustments[i];
+                        bool inTail = adj.ShouldMove;
+                        if (!inTail)
+                        {
+                            continue;
+                        }
 
-                    EditorGUILayout.BeginHorizontal();
-                    bool moveToHead = EditorGUILayout.Toggle(false, GUILayout.Width(20f));
-                    EditorGUILayout.LabelField(adj.DisplayName);
-                    if (moveToHead)
-                    {
-                        adj.ShouldMove = true; // 移到头部（对尾部出站来说 true 表示要复制到头部）
-                        _splitOutgoingAdjustments[i] = adj;
+                        EditorGUILayout.BeginHorizontal();
+                        bool keepInTail = EditorGUILayout.Toggle(true, GUILayout.Width(20f));
+                        EditorGUILayout.LabelField(adj.DisplayName);
+                        if (!keepInTail)
+                        {
+                            adj.ShouldMove = false; // 移回头部
+                            _splitAnyAdjustments[i] = adj;
+                        }
+                        EditorGUILayout.EndHorizontal();
                     }
-                    EditorGUILayout.EndHorizontal();
                 }
-            }
-            EditorGUILayout.EndScrollView();
+
+
+                if (_splitOutgoingAdjustments.Count > 0)
+                {
+                    for (int i = 0; i < _splitOutgoingAdjustments.Count; i++)
+                    {
+                        var adj = _splitOutgoingAdjustments[i];
+                        bool inTail = !adj.ShouldMove;
+                        if (!inTail)
+                        {
+                            continue;
+                        }
+
+                        EditorGUILayout.BeginHorizontal();
+                        bool moveToHead = EditorGUILayout.Toggle(false, GUILayout.Width(20f));
+                        EditorGUILayout.LabelField(adj.DisplayName);
+                        if (moveToHead)
+                        {
+                            adj.ShouldMove = true;
+                            _splitOutgoingAdjustments[i] = adj;
+                        }
+                        EditorGUILayout.EndHorizontal();
+                    }
+                }
+            }, GUILayout.ExpandHeight(true));
             EditorGUILayout.EndVertical();
 
             GUILayout.Space(4f);

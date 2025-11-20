@@ -50,18 +50,17 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
         private void OnGUI()
         {
-            mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
-
-            DrawTargetSelection();
-
-            GUILayout.Space(4f);
-
-            if (targetRoot != null && controllers.Count > 0)
+            mainScroll = ToolboxUtils.ScrollView(mainScroll, () =>
             {
-                DrawSearchAreaPlaceholder();
-            }
+                DrawTargetSelection();
 
-            EditorGUILayout.EndScrollView();
+                GUILayout.Space(4f);
+
+                if (targetRoot != null && controllers.Count > 0)
+                {
+                    DrawSearchAreaPlaceholder();
+                }
+            });
         }
 
         private void DrawSearchScope()

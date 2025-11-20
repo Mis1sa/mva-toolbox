@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 
 using UnityEditor.Animations;
+using MVA.Toolbox.Public;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -72,17 +73,17 @@ namespace MVA.Toolbox.AnimatorControllerRebuilt
 
         private void OnGUI()
         {
-            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
-            GUILayout.BeginVertical(contentBoxStyle);
-            
-            DrawMainContent();
+            scrollPosition = ToolboxUtils.ScrollView(scrollPosition, () =>
+            {
+                GUILayout.BeginVertical(contentBoxStyle);
 
-            GUILayout.EndVertical();
-            
-            EditorGUILayout.Space();
-            DrawStatisticsSection();
+                DrawMainContent();
 
-            EditorGUILayout.EndScrollView();
+                GUILayout.EndVertical();
+
+                EditorGUILayout.Space();
+                DrawStatisticsSection();
+            });
         }
         
         private void OnInspectorUpdate()

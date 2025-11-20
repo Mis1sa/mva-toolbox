@@ -4,6 +4,7 @@ using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using MVA.Toolbox.QuickAddParameter.Services;
+using MVA.Toolbox.Public;
 
 namespace MVA.Toolbox.QuickAddParameter.UI
 {
@@ -34,6 +35,8 @@ namespace MVA.Toolbox.QuickAddParameter.UI
 
         // "注册到 Parameters" 模式下的列表滚动位置
         Vector2 _parametersScroll;
+
+        Vector2 _controllerParametersScroll;
 
         // 在“注册到 Parameters”模式下记录每个控制器参数的选择、类型/默认值与保存/同步状态
         System.Collections.Generic.Dictionary<string, bool> _paramSelectFlags = new System.Collections.Generic.Dictionary<string, bool>();
@@ -66,50 +69,48 @@ namespace MVA.Toolbox.QuickAddParameter.UI
                 _service = new QuickAddParameterService();
             }
 
-            _scroll = EditorGUILayout.BeginScrollView(_scroll);
-
-            DrawTargetSelection();
-
-            GUILayout.Space(4f);
-
-            if (_targetObject == null)
+            _scroll = ToolboxUtils.ScrollView(_scroll, () =>
             {
-                EditorGUILayout.HelpBox("请拖入 VRChat Avatar 或带Animator 组件的物体，或直接拖入 动画控制器", MessageType.Info);
-                EditorGUILayout.EndScrollView();
-                return;
-            }
-
-            DrawModeSelection();
-
-            GUILayout.Space(4f);
-
-            DrawControllerAndParametersSelection();
-
-            GUILayout.Space(4f);
-            if (_mode == ToolMode.ToController)
-            {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                DrawCommonOptions();
-                GUILayout.Space(4f);
-                DrawParameterListForController();
-                EditorGUILayout.EndVertical();
+                DrawTargetSelection();
 
                 GUILayout.Space(4f);
-                DrawActionsForController();
-            }
-            else
-            {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                DrawCommonOptions();
-                GUILayout.Space(4f);
-                DrawParameterListForParameters();
-                EditorGUILayout.EndVertical();
+
+                if (_targetObject == null)
+                {
+                    EditorGUILayout.HelpBox("请拖入 VRChat Avatar 或带Animator 组件的物体，或直接拖入 动画控制器", MessageType.Info);
+                    return;
+                }
+
+                DrawModeSelection();
 
                 GUILayout.Space(4f);
-                DrawActionsForParameters();
-            }
 
-            EditorGUILayout.EndScrollView();
+                DrawControllerAndParametersSelection();
+
+                GUILayout.Space(4f);
+                if (_mode == ToolMode.ToController)
+                {
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    DrawCommonOptions();
+                    GUILayout.Space(4f);
+                    DrawParameterListForController();
+                    EditorGUILayout.EndVertical();
+
+                    GUILayout.Space(4f);
+                    DrawActionsForController();
+                }
+                else
+                {
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    DrawCommonOptions();
+                    GUILayout.Space(4f);
+                    DrawParameterListForParameters();
+                    EditorGUILayout.EndVertical();
+
+                    GUILayout.Space(4f);
+                    DrawActionsForParameters();
+                }
+            });
         }
 
         void DrawTargetSelection()
@@ -336,65 +337,64 @@ namespace MVA.Toolbox.QuickAddParameter.UI
                 return;
             }
 
-            var scroll = Vector2.zero;
-            scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.Height(320f));
-
-            for (int i = 0; i < contact.Count; i++)
+            _controllerParametersScroll = ToolboxUtils.ScrollView(_controllerParametersScroll, () =>
             {
-                var param = contact[i];
-                if (registered != null && !string.IsNullOrEmpty(param.Name) && registered.Contains(param.Name))
+                for (int i = 0; i < contact.Count; i++)
                 {
-                    // 已注册且启用筛选时跳过
-                    continue;
+                    var param = contact[i];
+                    if (registered != null && !string.IsNullOrEmpty(param.Name) && registered.Contains(param.Name))
+                    {
+                        // 已注册且启用筛选时跳过
+                        continue;
+                    }
+
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    DrawSingleParameterRow(param, false);
+                    EditorGUILayout.EndVertical();
                 }
 
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                DrawSingleParameterRow(param, false);
-                EditorGUILayout.EndVertical();
-            }
-
-            for (int i = 0; i < groups.Count; i++)
-            {
-                var group = groups[i];
-                bool anyVisible = false;
-
-                // 先检查该组中是否存在未注册的参数
-                if (registered != null)
+                for (int i = 0; i < groups.Count; i++)
                 {
+                    var group = groups[i];
+                    bool anyVisible = false;
+
+                    // 先检查该组中是否存在未注册的参数
+                    if (registered != null)
+                    {
+                        for (int j = 0; j < group.Parameters.Count; j++)
+                        {
+                            var param = group.Parameters[j];
+                            if (string.IsNullOrEmpty(param.Name) || !registered.Contains(param.Name))
+                            {
+                                anyVisible = true;
+                                break;
+                            }
+                        }
+                        if (!anyVisible)
+                        {
+                            continue;
+                        }
+                    }
+
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    EditorGUILayout.LabelField("VRC Phys Bone: " + group.BaseName, EditorStyles.boldLabel);
+                    GUILayout.Space(3f);
                     for (int j = 0; j < group.Parameters.Count; j++)
                     {
                         var param = group.Parameters[j];
-                        if (string.IsNullOrEmpty(param.Name) || !registered.Contains(param.Name))
+                        if (registered != null && !string.IsNullOrEmpty(param.Name) && registered.Contains(param.Name))
                         {
-                            anyVisible = true;
-                            break;
+                            continue;
                         }
+
+                        DrawSingleParameterRow(param, true);
                     }
-                    if (!anyVisible)
-                    {
-                        continue;
-                    }
+
+                    EditorGUILayout.EndVertical();
+                    GUILayout.Space(3f);
                 }
+            }, GUILayout.Height(320f));
 
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("VRC Phys Bone: " + group.BaseName, EditorStyles.boldLabel);
-                GUILayout.Space(3f);
-                for (int j = 0; j < group.Parameters.Count; j++)
-                {
-                    var param = group.Parameters[j];
-                    if (registered != null && !string.IsNullOrEmpty(param.Name) && registered.Contains(param.Name))
-                    {
-                        continue;
-                    }
-
-                    DrawSingleParameterRow(param, true);
-                }
-
-                EditorGUILayout.EndVertical();
-                GUILayout.Space(3f);
-            }
-
-            EditorGUILayout.EndScrollView();
             EditorGUILayout.EndVertical();
         }
 
@@ -515,98 +515,97 @@ namespace MVA.Toolbox.QuickAddParameter.UI
                 return;
             }
 
-            _parametersScroll = EditorGUILayout.BeginScrollView(_parametersScroll, GUILayout.Height(320f));
-
-            for (int i = 0; i < controllerParams.Length; i++)
+            _parametersScroll = ToolboxUtils.ScrollView(_parametersScroll, () =>
             {
-                var p = controllerParams[i];
-                if (p == null) continue;
-
-                if (existingNames != null && !string.IsNullOrEmpty(p.name) && existingNames.Contains(p.name))
+                for (int i = 0; i < controllerParams.Length; i++)
                 {
-                    // 筛选模式下跳过已存在于 ExpressionParameters 的条目
-                    continue;
-                }
+                    var p = controllerParams[i];
+                    if (p == null) continue;
 
-                string key = p.name ?? string.Empty;
-                if (!_paramSelectFlags.ContainsKey(key)) _paramSelectFlags[key] = false;
-                if (!_paramTypeOverrides.ContainsKey(key))
-                {
-                    _paramTypeOverrides[key] = p.type;
-                }
+                    if (existingNames != null && !string.IsNullOrEmpty(p.name) && existingNames.Contains(p.name))
+                    {
+                        // 筛选模式下跳过已存在于 ExpressionParameters 的条目
+                        continue;
+                    }
 
-                if (!_paramDefaultOverrides.ContainsKey(key))
-                {
-                    float def = 0f;
-                    switch (p.type)
+                    string key = p.name ?? string.Empty;
+                    if (!_paramSelectFlags.ContainsKey(key)) _paramSelectFlags[key] = false;
+                    if (!_paramTypeOverrides.ContainsKey(key))
+                    {
+                        _paramTypeOverrides[key] = p.type;
+                    }
+
+                    if (!_paramDefaultOverrides.ContainsKey(key))
+                    {
+                        float def = 0f;
+                        switch (p.type)
+                        {
+                            case AnimatorControllerParameterType.Bool:
+                                def = p.defaultBool ? 1f : 0f;
+                                break;
+                            case AnimatorControllerParameterType.Float:
+                                def = p.defaultFloat;
+                                break;
+                            case AnimatorControllerParameterType.Int:
+                                def = p.defaultInt;
+                                break;
+                        }
+                        _paramDefaultOverrides[key] = def;
+                    }
+
+                    if (!_saveFlags.ContainsKey(key)) _saveFlags[key] = false;
+                    if (!_syncFlags.ContainsKey(key)) _syncFlags[key] = false;
+
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    EditorGUILayout.BeginHorizontal();
+
+                    _paramSelectFlags[key] = EditorGUILayout.Toggle(_paramSelectFlags[key], GUILayout.Width(20f));
+
+                    EditorGUILayout.LabelField("参数名:", GUILayout.Width(60f));
+                    EditorGUILayout.LabelField(string.IsNullOrEmpty(p.name) ? "(Unnamed)" : p.name, EditorStyles.boldLabel, GUILayout.MinWidth(120f));
+
+                    EditorGUILayout.LabelField("类型:", GUILayout.Width(40f));
+                    string[] typeOptions = { "Bool", "Float", "Int" };
+                    AnimatorControllerParameterType currentType = _paramTypeOverrides[key];
+                    int currentTypeIndex = currentType == AnimatorControllerParameterType.Bool ? 0 :
+                                           currentType == AnimatorControllerParameterType.Float ? 1 : 2;
+                    int newTypeIndex = EditorGUILayout.Popup(currentTypeIndex, typeOptions, GUILayout.Width(80f));
+                    var displayType = newTypeIndex == 0 ? AnimatorControllerParameterType.Bool :
+                                      newTypeIndex == 1 ? AnimatorControllerParameterType.Float :
+                                      AnimatorControllerParameterType.Int;
+                    _paramTypeOverrides[key] = displayType;
+
+                    EditorGUILayout.LabelField("默认值:", GUILayout.Width(60f));
+                    float currentDefault = _paramDefaultOverrides[key];
+                    switch (displayType)
                     {
                         case AnimatorControllerParameterType.Bool:
-                            def = p.defaultBool ? 1f : 0f;
+                            bool boolVal = currentDefault > 0.5f;
+                            boolVal = EditorGUILayout.Toggle(boolVal, GUILayout.Width(60f));
+                            currentDefault = boolVal ? 1f : 0f;
                             break;
                         case AnimatorControllerParameterType.Float:
-                            def = p.defaultFloat;
+                            float floatVal = currentDefault;
+                            floatVal = EditorGUILayout.FloatField(floatVal, GUILayout.Width(60f));
+                            currentDefault = floatVal;
                             break;
                         case AnimatorControllerParameterType.Int:
-                            def = p.defaultInt;
+                            int intVal = Mathf.RoundToInt(currentDefault);
+                            intVal = EditorGUILayout.IntField(intVal, GUILayout.Width(60f));
+                            currentDefault = intVal;
                             break;
                     }
-                    _paramDefaultOverrides[key] = def;
+                    _paramDefaultOverrides[key] = currentDefault;
+
+                    GUILayout.Space(10f);
+                    _saveFlags[key] = EditorGUILayout.ToggleLeft("保存", _saveFlags[key], GUILayout.Width(60f));
+                    GUILayout.Space(4f);
+                    _syncFlags[key] = EditorGUILayout.ToggleLeft("同步", _syncFlags[key], GUILayout.Width(60f));
+
+                    EditorGUILayout.EndHorizontal();
+                    EditorGUILayout.EndVertical();
                 }
-
-                if (!_saveFlags.ContainsKey(key)) _saveFlags[key] = false;
-                if (!_syncFlags.ContainsKey(key)) _syncFlags[key] = false;
-
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.BeginHorizontal();
-
-                _paramSelectFlags[key] = EditorGUILayout.Toggle(_paramSelectFlags[key], GUILayout.Width(20f));
-
-                EditorGUILayout.LabelField("参数名:", GUILayout.Width(60f));
-                EditorGUILayout.LabelField(string.IsNullOrEmpty(p.name) ? "(Unnamed)" : p.name, EditorStyles.boldLabel, GUILayout.MinWidth(120f));
-
-                EditorGUILayout.LabelField("类型:", GUILayout.Width(40f));
-                string[] typeOptions = { "Bool", "Float", "Int" };
-                AnimatorControllerParameterType currentType = _paramTypeOverrides[key];
-                int currentTypeIndex = currentType == AnimatorControllerParameterType.Bool ? 0 :
-                                       currentType == AnimatorControllerParameterType.Float ? 1 : 2;
-                int newTypeIndex = EditorGUILayout.Popup(currentTypeIndex, typeOptions, GUILayout.Width(80f));
-                var displayType = newTypeIndex == 0 ? AnimatorControllerParameterType.Bool :
-                                  newTypeIndex == 1 ? AnimatorControllerParameterType.Float :
-                                  AnimatorControllerParameterType.Int;
-                _paramTypeOverrides[key] = displayType;
-
-                EditorGUILayout.LabelField("默认值:", GUILayout.Width(60f));
-                float currentDefault = _paramDefaultOverrides[key];
-                switch (displayType)
-                {
-                    case AnimatorControllerParameterType.Bool:
-                        bool boolVal = currentDefault > 0.5f;
-                        boolVal = EditorGUILayout.Toggle(boolVal, GUILayout.Width(60f));
-                        currentDefault = boolVal ? 1f : 0f;
-                        break;
-                    case AnimatorControllerParameterType.Float:
-                        float floatVal = currentDefault;
-                        floatVal = EditorGUILayout.FloatField(floatVal, GUILayout.Width(60f));
-                        currentDefault = floatVal;
-                        break;
-                    case AnimatorControllerParameterType.Int:
-                        int intVal = Mathf.RoundToInt(currentDefault);
-                        intVal = EditorGUILayout.IntField(intVal, GUILayout.Width(60f));
-                        currentDefault = intVal;
-                        break;
-                }
-                _paramDefaultOverrides[key] = currentDefault;
-
-                GUILayout.Space(10f);
-                _saveFlags[key] = EditorGUILayout.ToggleLeft("保存", _saveFlags[key], GUILayout.Width(60f));
-                GUILayout.Space(4f);
-                _syncFlags[key] = EditorGUILayout.ToggleLeft("同步", _syncFlags[key], GUILayout.Width(60f));
-
-                EditorGUILayout.EndHorizontal();
-                EditorGUILayout.EndVertical();
-            }
-
-            EditorGUILayout.EndScrollView();
+            }, GUILayout.Height(320f));
 
             EditorGUILayout.EndVertical();
         }

@@ -40,26 +40,24 @@ namespace MVA.Toolbox.BakeDefaultAnim
 
         void OnGUI()
         {
-            _scroll = EditorGUILayout.BeginScrollView(_scroll);
-
-            DrawTargetSelection();
-
-            GUILayout.Space(4f);
-
-            if (_targetObject == null)
+            _scroll = ToolboxUtils.ScrollView(_scroll, () =>
             {
-                EditorGUILayout.HelpBox("请拖入 VRChat Avatar 或带 Animator 组件的物体。", MessageType.Info);
-                EditorGUILayout.EndScrollView();
-                return;
-            }
+                DrawTargetSelection();
 
-            DrawControllerAndLayerSelection();
+                GUILayout.Space(4f);
 
-            GUILayout.Space(4f);
+                if (_targetObject == null)
+                {
+                    EditorGUILayout.HelpBox("请拖入 VRChat Avatar 或带 Animator 组件的物体。", MessageType.Info);
+                    return;
+                }
 
-            DrawOptionsAndAction();
+                DrawControllerAndLayerSelection();
 
-            EditorGUILayout.EndScrollView();
+                GUILayout.Space(4f);
+
+                DrawOptionsAndAction();
+            });
         }
 
         void DrawTargetSelection()

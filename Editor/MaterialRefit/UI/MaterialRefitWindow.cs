@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 using MVA.Toolbox.MaterialRefit.Services;
+using MVA.Toolbox.Public;
 
 namespace MVA.Toolbox.MaterialRefit.UI
 {
@@ -62,37 +63,35 @@ namespace MVA.Toolbox.MaterialRefit.UI
                 _service = new MaterialRefitService();
             }
 
-            _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
-
-            DrawTargetSelection();
-
-            GUILayout.Space(4f);
-
-            if (_targetObject == null)
+            _scrollPos = ToolboxUtils.ScrollView(_scrollPos, () =>
             {
-                EditorGUILayout.HelpBox("将场景或项目中的 GameObject 拖入到 '目标物体'，工具会收集其及全部子对象中使用的材质 / 贴图。关闭窗口且未点击 应用 前将撤销预览更改。", MessageType.Info);
-                EditorGUILayout.EndScrollView();
-                return;
-            }
+                DrawTargetSelection();
 
-            DrawModeSelection();
+                GUILayout.Space(4f);
 
-            GUILayout.Space(6f);
+                if (_targetObject == null)
+                {
+                    EditorGUILayout.HelpBox("将场景或项目中的 GameObject 拖入到 '目标物体'，工具会收集其及全部子对象中使用的材质 / 贴图。关闭窗口且未点击 应用 前将撤销预览更改。", MessageType.Info);
+                    return;
+                }
 
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                DrawModeSelection();
 
-            if (_mode == ToolMode.Material)
-            {
-                DrawMaterialMode();
-            }
-            else
-            {
-                DrawTextureMode();
-            }
+                GUILayout.Space(6f);
 
-            EditorGUILayout.EndVertical();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            EditorGUILayout.EndScrollView();
+                if (_mode == ToolMode.Material)
+                {
+                    DrawMaterialMode();
+                }
+                else
+                {
+                    DrawTextureMode();
+                }
+
+                EditorGUILayout.EndVertical();
+            });
         }
 
         void DrawTargetSelection()

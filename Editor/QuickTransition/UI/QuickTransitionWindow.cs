@@ -324,23 +324,22 @@ namespace MVA.Toolbox.QuickTransition.UI
 
         private void OnGUI()
         {
-            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
-
-            DrawTargetSelection();
-            EditorGUILayout.Space();
-
-            if (_targetObject != null && _controllers.Count > 0)
+            _scrollPosition = ToolboxUtils.ScrollView(_scrollPosition, () =>
             {
-                DrawControllerSelection();
+                DrawTargetSelection();
                 EditorGUILayout.Space();
 
-                DrawModeSelection();
+                if (_targetObject != null && _controllers.Count > 0)
+                {
+                    DrawControllerSelection();
+                    EditorGUILayout.Space();
 
-                EditorGUILayout.Space();
-                DrawWorkAreaPlaceholder();
-            }
+                    DrawModeSelection();
 
-            EditorGUILayout.EndScrollView();
+                    EditorGUILayout.Space();
+                    DrawWorkAreaPlaceholder();
+                }
+            });
         }
 
         private void DrawTargetSelection()

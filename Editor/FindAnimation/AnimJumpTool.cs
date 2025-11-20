@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using MVA.Toolbox.Public;
 using VRC.SDK3.Avatars.Components;
 
 namespace MVA.Toolbox.FindAnimation.Editor
@@ -417,19 +418,18 @@ namespace MVA.Toolbox.FindAnimation.Editor
             EditorGUILayout.LabelField("以下 Animator Controller 引用了该剪辑，请选择一个以定位:", EditorStyles.wordWrappedLabel);
             EditorGUILayout.Space();
 
-            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
-
-            for (int i = 0; i < _foundControllers.Count; i++)
+            _scrollPosition = ToolboxUtils.ScrollView(_scrollPosition, () =>
             {
-                var controller = _foundControllers[i];
-                if (controller == null) continue;
+                for (int i = 0; i < _foundControllers.Count; i++)
+                {
+                    var controller = _foundControllers[i];
+                    if (controller == null) continue;
 
-                EditorGUILayout.BeginHorizontal(GUI.skin.box);
-                EditorGUILayout.ObjectField(controller.name, controller, typeof(AnimatorController), false);
-                EditorGUILayout.EndHorizontal();
-            }
-
-            EditorGUILayout.EndScrollView();
+                    EditorGUILayout.BeginHorizontal(GUI.skin.box);
+                    EditorGUILayout.ObjectField(controller.name, controller, typeof(AnimatorController), false);
+                    EditorGUILayout.EndHorizontal();
+                }
+            });
 
             EditorGUILayout.Space(10f);
 

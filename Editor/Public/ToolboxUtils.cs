@@ -49,6 +49,14 @@ namespace MVA.Toolbox.Public
             return $"{rootPath}/{segment}";
         }
 
+        public static Vector2 ScrollView(Vector2 scroll, System.Action drawContent, params GUILayoutOption[] options)
+        {
+            scroll = EditorGUILayout.BeginScrollView(scroll, options);
+            drawContent?.Invoke();
+            EditorGUILayout.EndScrollView();
+            return scroll;
+        }
+
         // 从传入对象解析并返回 VRCAvatarDescriptor
         public static VRCAvatarDescriptor GetAvatarDescriptor(UnityEngine.Object obj)
         {

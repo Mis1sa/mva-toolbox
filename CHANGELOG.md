@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.1] - 2025-11-20
+
+### Changed
+
+- 统一各工具窗口的滚动实现，改用 `ToolboxUtils.ScrollView`，在保持原有 UI 结构与布局的前提下简化维护。
+- 调整 **Quick State** 分割模式中“手动调整”及“头/尾 Transition” 区域的布局，使其在窗口缩放时更好填充剩余空间。
+
+### Fixed
+
+- 修复 **Quick Add Parameter** 等窗口中部分列表无法正常滚动的问题。
+- 修复 **Quick State** 中“尾部 Transition” 水平滚动条固定不随内容移动的问题。
+- 修复 **Anim Path Redirect** 中“缺失”项可选择 Avatar 根物体作为修复目标的问题。
+- 调整 **Anim Path Redirect** 中“未处理 / 待修复” 状态文本的字号与对齐方式，使其更易阅读。
+
 ## [0.3.0] - 2025-11-19
 
 ### Added

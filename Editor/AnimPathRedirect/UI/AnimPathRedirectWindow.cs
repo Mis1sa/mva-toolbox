@@ -26,7 +26,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
         public static void Open()
         {
             var w = GetWindow<AnimPathRedirectWindow>("Anim Path Redirect");
-            w.minSize = new Vector2(500f, 600f);
+            w.minSize = new Vector2(560f, 600f);
         }
 
         void OnEnable()
@@ -73,18 +73,20 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
             if (_pendingStatusStyle == null)
             {
-                _pendingStatusStyle = new GUIStyle(EditorStyles.miniLabel)
+                _pendingStatusStyle = new GUIStyle(EditorStyles.label)
                 {
                     // 黄色：未处理
+                    alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = new Color(1f, 0.9f, 0f) }
                 };
             }
 
             if (_fixedStatusStyle == null)
             {
-                _fixedStatusStyle = new GUIStyle(EditorStyles.miniLabel)
+                _fixedStatusStyle = new GUIStyle(EditorStyles.label)
                 {
                     // 绿色：待修复
+                    alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = Color.green }
                 };
             }
@@ -99,26 +101,24 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
             EnsureStyles();
 
-            _scroll = EditorGUILayout.BeginScrollView(_scroll);
-
-            DrawTargetSelection();
-
-            GUILayout.Space(4f);
-
-            if (_service.TargetRoot == null)
+            _scroll = ToolboxUtils.ScrollView(_scroll, () =>
             {
-                EditorGUILayout.HelpBox("请拖入一个 Avatar 或带 Animator 组件的物体。", MessageType.Info);
-                EditorGUILayout.EndScrollView();
-                return;
-            }
+                DrawTargetSelection();
 
-            DrawControllerAndLayerSelection();
+                GUILayout.Space(4f);
 
-            GUILayout.Space(4f);
+                if (_service.TargetRoot == null)
+                {
+                    EditorGUILayout.HelpBox("请拖入一个 Avatar 或带 Animator 组件的物体。", MessageType.Info);
+                    return;
+                }
 
-            DrawTrackingAndResults();
+                DrawControllerAndLayerSelection();
 
-            EditorGUILayout.EndScrollView();
+                GUILayout.Space(4f);
+
+                DrawTrackingAndResults();
+            });
         }
 
         void DrawTargetSelection()
@@ -297,7 +297,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             }
 
             GUI.enabled = canApply;
-            if (GUILayout.Button("2. 应用修改 (重定向/修复/移除动画曲线)", GUILayout.Height(40f)))
+            if (GUILayout.Button("应用修改", GUILayout.Height(40f)))
             {
                 var (modified, fixedCount, removed) = _service.ApplyRedirects();
                 GUI.enabled = true;
@@ -383,7 +383,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                 return;
             }
 
-            GUILayout.Label("--- 缺失绑定 (Missing Curves) ---", EditorStyles.centeredGreyMiniLabel);
+            GUILayout.Label("--- 缺失绑定 ---", EditorStyles.centeredGreyMiniLabel);
 
             foreach (var group in groups)
             {
@@ -397,7 +397,19 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                 var newFixTarget = EditorGUILayout.ObjectField("新物体/组件", group.FixTarget, typeof(UnityEngine.Object), true);
                 if (EditorGUI.EndChangeCheck())
                 {
-                    group.FixTarget = newFixTarget;
+                    var root = _service.TargetRoot;
+                    bool isRoot = false;
+
+                    if (newFixTarget is GameObject go)
+                    {
+                        isRoot = go == root;
+                    }
+                    else if (newFixTarget is Component comp)
+                    {
+                        isRoot = comp.gameObject == root;
+                    }
+
+                    group.FixTarget = isRoot ? null : newFixTarget;
                     _service.UpdateFixTargetStatus(group);
                 }
 
@@ -449,7 +461,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
                                 _service.UpdateFixTargetStatus(group);
 
-                                // 结束当前类型块的 BeginVertical(EditorStyles.helpBox)，否则会导致 GUILayout Begin/End 不匹配
                                 EditorGUILayout.EndVertical();
                                 continue;
                             }
@@ -465,9 +476,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                         {
                             var rep = propGroup.First();
 
-                            // 构造显示文本，例如:
-                            // [BlendShape] BodyShrinkToe
-                            // [m_testName]
                             string labelText;
 
                             // BlendShape: 始终显示 [BlendShape] + 具体名称
@@ -512,7 +520,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                                 GUILayout.Label("未处理", _pendingStatusStyle);
                             }
 
-                            // 右侧："-" 按钮，与状态文本紧挨且整体右对齐
                             if (GUILayout.Button("-", GUILayout.Width(EditorGUIUtility.singleLineHeight), GUILayout.Height(EditorGUIUtility.singleLineHeight)))
                             {
                                 foreach (var c in propGroup)
@@ -539,7 +546,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
         string GetDisplayNameForProperty(AnimPathRedirectService.MissingCurveEntry entry)
         {
-            // 返回属性短名（propertyName 最后一段），不做本地化翻译。
             var name = entry.Binding.propertyName ?? string.Empty;
             int dot = name.LastIndexOf('.');
             return dot >= 0 && dot < name.Length - 1 ? name.Substring(dot + 1) : name;

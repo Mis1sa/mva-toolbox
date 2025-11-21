@@ -7,13 +7,12 @@ using MVA.Toolbox.Public;
 
 namespace MVA.Toolbox.AnimPathRedirect.UI
 {
-    /// <summary>
-    /// Anim Path Redirect 主窗口：提供动画路径追踪与重定向的界面，
-    /// 具体数据与操作逻辑由 AnimPathRedirectService 实现。
-    /// </summary>
+    // Anim Path Redirect 主窗口（IMGUI），核心逻辑由 AnimPathRedirectService 提供（见 AnimPathRedirectService.cs）
     public sealed class AnimPathRedirectWindow : EditorWindow
     {
+        // APR 主服务实例
         AnimPathRedirectService _service;
+        // 主滚动视图（使用公共工具 ToolboxUtils.ScrollView，定义于 MVA.Toolbox.Public.ToolboxUtils）
         Vector2 _scroll;
 
         GUIStyle _missingLabelStyle;
@@ -21,6 +20,8 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
         GUIStyle _changedLabelStyle;
         GUIStyle _pendingStatusStyle;
         GUIStyle _fixedStatusStyle;
+        GUIStyle _wrapLabelStyle;
+        GUIStyle _wrapMiniLabelStyle;
 
         [MenuItem("Tools/MVA Toolbox/Anim Path Redirect", false, 9)]
         public static void Open()
@@ -43,6 +44,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             Repaint();
         }
 
+        // 懒加载 GUIStyle，避免在 OnGUI 中频繁分配样式对象
         void EnsureStyles()
         {
             if (_missingLabelStyle == null)
@@ -57,7 +59,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             {
                 _removedLabelStyle = new GUIStyle(EditorStyles.boldLabel)
                 {
-                    // 橙色：移除
                     normal = { textColor = new Color(1f, 0.6f, 0f) }
                 };
             }
@@ -66,7 +67,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             {
                 _changedLabelStyle = new GUIStyle(EditorStyles.boldLabel)
                 {
-                    // 黄色：名称/路径变更
                     normal = { textColor = new Color(1f, 0.9f, 0f) }
                 };
             }
@@ -75,7 +75,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             {
                 _pendingStatusStyle = new GUIStyle(EditorStyles.label)
                 {
-                    // 黄色：未处理
                     alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = new Color(1f, 0.9f, 0f) }
                 };
@@ -85,9 +84,24 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             {
                 _fixedStatusStyle = new GUIStyle(EditorStyles.label)
                 {
-                    // 绿色：待修复
                     alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = Color.green }
+                };
+            }
+
+            if (_wrapLabelStyle == null)
+            {
+                _wrapLabelStyle = new GUIStyle(EditorStyles.label)
+                {
+                    wordWrap = true
+                };
+            }
+
+            if (_wrapMiniLabelStyle == null)
+            {
+                _wrapMiniLabelStyle = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    wordWrap = true
                 };
             }
         }
@@ -194,11 +208,11 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             EditorGUILayout.EndVertical();
         }
 
+        // 追踪入口与结果汇总区域（调用 AnimPathRedirectService 的核心方法）
         void DrawTrackingAndResults()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            // 顶部按钮行：开始/退出追踪 + 忽略缺失
             EditorGUILayout.BeginHorizontal();
 
             bool hasController = _service.SelectedController != null;
@@ -222,7 +236,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
             GUI.enabled = true;
 
-            // 忽略所有缺失
             int totalMissingCount = _service.MissingGroups
                 .Sum(g => g.CurvesByType.Sum(kvp => kvp.Value.Count(c => !c.IsMarkedForRemoval)));
             int ignorablesCount = _service.MissingGroups
@@ -252,16 +265,20 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                 return;
             }
 
-            // 有追踪数据时，每次绘制刷新当前状态
             _service.CalculateCurrentPaths();
 
             int pathChangeCount = _service.PathChangeGroups.Count(d => d.IsDeleted || d.HasPathChanged);
+
+            int componentChangeCount = _service.ComponentChangeGroups
+                .Sum(g => g.Bindings.Count);
+
             int activeMissingCount = _service.MissingGroups.Sum(g =>
-                (_service.IgnoreAllMissing && g.FixTarget == null)
+                (g.OwnerDeleted || (_service.IgnoreAllMissing && g.FixTarget == null))
                     ? 0
                     : g.CurvesByType.Sum(kvp => kvp.Value.Count(c => !c.IsMarkedForRemoval))
             );
-            int totalChanges = pathChangeCount + activeMissingCount;
+
+            int totalChanges = pathChangeCount + componentChangeCount + activeMissingCount;
 
             if (pathChangeCount > 0 && !_service.HierarchyChanged)
             {
@@ -270,18 +287,16 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
             if (_service.HierarchyChanged)
             {
-                EditorGUILayout.HelpBox($"层级结构已被修改。路径变动/删除：{pathChangeCount} 组，缺失绑定（待处理）：{activeMissingCount} 条。", MessageType.Warning);
+                EditorGUILayout.HelpBox($"层级结构已被修改。路径变动/删除：{pathChangeCount} 组，组件变更：{componentChangeCount} 条，缺失绑定（待处理）：{activeMissingCount} 条。", MessageType.Warning);
             }
 
             EditorGUILayout.LabelField($"追踪中... 总变动/缺失量: {totalChanges}", EditorStyles.boldLabel);
 
-            // 中部区域：缺失与路径变化，共用外层 ScrollView
             DrawMissingBindingsContent();
             DrawPathChangesContent();
 
             GUILayout.FlexibleSpace();
 
-            // 底部应用按钮
             bool canApply = totalChanges > 0;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -305,7 +320,6 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                     $"路径修正完成！\n重定向: {modified}\n修复: {fixedCount}\n移除: {removed}",
                     "确定");
                 Repaint();
-                return;
             }
 
             GUI.enabled = true;
@@ -318,13 +332,29 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
         void DrawPathChangesContent()
         {
-            var groups = _service.PathChangeGroups
+            // 若某个缺失组已经指定了 FixTarget，则在 UI 上暂时隐藏其“原物体”的路径/组件变更，
+            // 仅在 Service 内部继续追踪这些变更，直到 FixTarget 被清除或应用。
+            var hiddenOriginalPaths = _service.MissingGroups
+                .Where(g => g.FixTarget != null && !g.OwnerDeleted)
+                .Select(g => g.OldPath)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToHashSet();
+
+            // 物体级路径变更/移除
+            var objectGroups = _service.PathChangeGroups
                 .Where(d => d.IsDeleted || d.HasPathChanged)
                 .OrderByDescending(d => d.IsDeleted)
                 .ThenByDescending(d => d.HasPathChanged);
 
-            foreach (var data in groups)
+            foreach (var data in objectGroups)
             {
+                // 当该路径上的缺失已挂到新物体(FixTarget)上时，隐藏原物体的变更展示
+                if (!string.IsNullOrEmpty(data.OldPath) && hiddenOriginalPaths.Contains(data.OldPath))
+                {
+                    continue;
+                }
+
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.BeginHorizontal();
 
@@ -355,17 +385,56 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
                 if (data.HasPathChanged)
                 {
-                    GUILayout.Label($"旧路径: {data.OldPath}");
-                    GUILayout.Label($"新路径: {data.NewPath}");
+                    GUILayout.Label($"旧路径: {data.OldPath}", _wrapLabelStyle);
+                    GUILayout.Label($"新路径: {data.NewPath}", _wrapLabelStyle);
                 }
                 else if (data.IsDeleted)
                 {
-                    GUILayout.Label($"原路径: {data.OldPath}");
+                    GUILayout.Label($"原路径: {data.OldPath}", _wrapLabelStyle);
                 }
 
                 int totalCurveCount = data.Bindings.Count;
                 var componentTypes = data.Bindings.Select(b => b.type.Name).Distinct();
-                GUILayout.Label($"涉及类型: {string.Join(", ", componentTypes)} (共 {totalCurveCount} 条曲线)", EditorStyles.miniLabel);
+                GUILayout.Label($"涉及类型: {string.Join(", ", componentTypes)} (共 {totalCurveCount} 条曲线)", _wrapMiniLabelStyle);
+
+                EditorGUILayout.EndVertical();
+            }
+
+            // 组件级变更（当前仅包含“组件移除”）
+            var componentGroups = _service.ComponentChangeGroups
+                .Where(g => g.IsRemoved && g.Bindings.Count > 0)
+                .OrderBy(g => g.Path)
+                .ThenBy(g => g.ComponentName);
+
+            foreach (var group in componentGroups)
+            {
+                // 同样，当该路径上的缺失已指定 FixTarget 时，在 UI 上暂时隐藏原物体的组件移除记录
+                if (!string.IsNullOrEmpty(group.Path) && hiddenOriginalPaths.Contains(group.Path))
+                {
+                    continue;
+                }
+
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.BeginHorizontal();
+
+                GUILayout.Label("组件移除", _removedLabelStyle, GUILayout.Width(70f));
+                GUILayout.Label($"物体: {group.TargetObjectName}", EditorStyles.boldLabel);
+                GUILayout.Label($"组件: {group.ComponentName}", EditorStyles.boldLabel);
+                GUILayout.FlexibleSpace();
+
+                EditorGUILayout.EndHorizontal();
+
+                GUILayout.Label($"路径: {group.Path}", _wrapLabelStyle);
+
+                int totalCurveCount = group.Bindings.Count;
+                var propSamples = group.Bindings
+                    .Select(b => b.propertyName)
+                    .Distinct()
+                    .Take(3)
+                    .ToArray();
+                string props = propSamples.Length > 0 ? string.Join(", ", propSamples) : "(属性未知)";
+
+                GUILayout.Label($"涉及属性: {props} (共 {totalCurveCount} 条曲线)", _wrapMiniLabelStyle);
 
                 EditorGUILayout.EndVertical();
             }
@@ -374,7 +443,8 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
         void DrawMissingBindingsContent()
         {
             var groups = _service.MissingGroups
-                .Where(g => !g.IsEmpty && !(_service.IgnoreAllMissing && g.FixTarget == null))
+                // 排除所属物体已被删除的缺失组，仅在物体存在时展示其缺失组件
+                .Where(g => !g.OwnerDeleted && !g.IsEmpty && !(_service.IgnoreAllMissing && g.FixTarget == null))
                 .OrderBy(g => g.IsFixed)
                 .ToList();
 
@@ -389,37 +459,73 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-                GUILayout.Label($"缺失: {group.TargetObjectName}", _missingLabelStyle);
-                GUILayout.Label($"原路径: {group.OldPath}");
+                var root = _service.TargetRoot;
+                string displayName = group.TargetObjectName;
+
+                // 默认使用当前路径（例如物体被重命名/移动后），否则退回原始路径
+                string displayPath = string.IsNullOrEmpty(group.CurrentPath) ? group.OldPath : group.CurrentPath;
+
+                // 若指定了 FixTarget，则在显示上将缺失项“挂靠”到新物体：
+                // 使用 FixTarget 对应物体的名称和相对路径进行展示，
+                // 同时保持原物体的路径/组件变更在 Service 内部继续计算。
+                if (group.FixTarget != null && root != null)
+                {
+                    var fixGo = group.FixTarget as GameObject ?? (group.FixTarget as Component)?.gameObject;
+                    if (fixGo != null)
+                    {
+                        displayName = fixGo.name;
+
+                        if (fixGo == root)
+                        {
+                            displayPath = string.Empty;
+                        }
+                        else
+                        {
+                            var fixPath = AnimationUtility.CalculateTransformPath(fixGo.transform, root.transform);
+                            if (fixPath != null)
+                            {
+                                displayPath = fixPath;
+                            }
+                        }
+                    }
+                }
+
+                GUILayout.Label($"缺失: {displayName}", _missingLabelStyle);
+                GUILayout.Label($"路径: {displayPath}", _wrapLabelStyle);
 
                 // 修复目标
                 EditorGUI.BeginChangeCheck();
                 var newFixTarget = EditorGUILayout.ObjectField("新物体/组件", group.FixTarget, typeof(UnityEngine.Object), true);
                 if (EditorGUI.EndChangeCheck())
                 {
-                    var root = _service.TargetRoot;
+                    var targetRoot = _service.TargetRoot;
                     bool isRoot = false;
 
                     if (newFixTarget is GameObject go)
                     {
-                        isRoot = go == root;
+                        isRoot = go == targetRoot;
                     }
                     else if (newFixTarget is Component comp)
                     {
-                        isRoot = comp.gameObject == root;
+                        isRoot = comp.gameObject == targetRoot;
                     }
 
                     group.FixTarget = isRoot ? null : newFixTarget;
-                    _service.UpdateFixTargetStatus(group);
-                }
 
-                var requiredTypes = group.RequiredTypes;
-                if (group.FixTarget == null)
-                {
-                    if (requiredTypes.Count > 0)
+                    // 若 FixTarget 被清空（包括被判定为根而置为 null），强制重置该组中
+                    // 所有未被标记移除条目的 IsFixedByGroup，以便状态从“待修复”恢复为“未处理”。
+                    if (group.FixTarget == null)
                     {
-                        GUILayout.Label($"要求组件: {string.Join(", ", requiredTypes.Select(t => t.Name))}", EditorStyles.boldLabel);
+                        foreach (var entry in group.CurvesByType.SelectMany(kvp => kvp.Value))
+                        {
+                            if (!entry.IsMarkedForRemoval)
+                            {
+                                entry.IsFixedByGroup = false;
+                            }
+                        }
                     }
+
+                    _service.UpdateFixTargetStatus(group);
                 }
 
                 // 按类型分组的缺失属性
@@ -509,7 +615,10 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
                             // 状态提示：未处理(黄) / 待修复(绿)
                             bool hasActive = entries.Any(e => !e.IsMarkedForRemoval);
-                            bool allFixed = hasActive && entries.All(e => e.IsFixedByGroup && !e.IsMarkedForRemoval);
+                            // 只有在存在有效 FixTarget 且所有条目均标记为 IsFixedByGroup 时，才视为“待修复”
+                            bool allFixed = hasActive
+                                && group.FixTarget != null
+                                && entries.All(e => e.IsFixedByGroup && !e.IsMarkedForRemoval);
 
                             if (allFixed)
                             {

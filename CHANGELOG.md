@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.2] - 2025-11-21
+
+### Changed
+
+- 为 **Anim Path Redirect** 增强路径与组件级别的变更检测逻辑，引入约束/组件快照服务，统一追踪组件移除与 SMR BlendShape 相关的缺失曲线。
+
+### Fixed
+
+- 修复 **Anim Path Redirect** 在部分情况下无法正确识别组件缺失的问题（例如约束组件、VRC Constraint / VRC Contact / SkinnedMeshRenderer 等），现在会将这类缺失统一归入“缺失绑定 / 路径变更/移除”区域进行展示与修复。
+
 ## [0.3.1] - 2025-11-20
 
 ### Changed

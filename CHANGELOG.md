@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0] - 2025-12-01
+
+### Added
+
+- 新增 **Quick Remove Bones** 工具：在 Avatar 中自动分析 Renderer 与独占骨骼，支持批量移除骨骼与关联网格。
+
+### Changed
+
+- 将 **Avatar Quick Toggle** 组件移动到 `组件/MVA Toolbox/Avatar Quick Toggle`，便于在 Inspector 中查找。
+
+### Fixed
+
+- 修复 **Avatar Quick Toggle** 在 Float 切换层上的 ON/OFF 状态计算问题。
+- 修复 **Avatar Quick Toggle** Int 层使用 “+” 按钮时写回配置项出错的问题。
+- 修复 **Material Refit** 未额外创建材质实例导致引用丢失的问题，并修复其预览逻辑。
+- 修复 **Anim Path Redirect** 在移除所有缺失条目后无法应用更改的问题。
+
 ## [0.3.2] - 2025-11-21
 
 ### Changed

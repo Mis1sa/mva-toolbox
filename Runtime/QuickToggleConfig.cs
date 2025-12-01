@@ -8,7 +8,7 @@ using VRC.SDKBase;
 namespace MVA.Toolbox.AvatarQuickToggle
 {
     [DisallowMultipleComponent]
-    [AddComponentMenu("Avatar Quick Toggle")]
+    [AddComponentMenu("MVA Toolbox/Avatar Quick Toggle")]
     public class QuickToggleConfig : MonoBehaviour, IEditorOnly
     {
         public VRCAvatarDescriptor targetAvatar;

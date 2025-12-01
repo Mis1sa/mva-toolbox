@@ -204,6 +204,15 @@ namespace MVA.Toolbox.MaterialRefit.UI
                 }
 
                 EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("名称后缀", GUILayout.Width(60f));
+                string newSuffix = EditorGUILayout.TextField(_service.MaterialSuffix ?? string.Empty);
+                if (!string.Equals(newSuffix, _service.MaterialSuffix))
+                {
+                    _service.MaterialSuffix = newSuffix;
+                }
+                EditorGUILayout.EndHorizontal();
             }
 
             var textures = _service.FoundTextures;

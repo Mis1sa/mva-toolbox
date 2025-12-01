@@ -148,7 +148,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
             {
                 foreach (var target in source.floatTargets)
                 {
-                    toggle.config.floatTargets.Add(ConvertTarget(target));
+                    toggle.config.floatTargets.Add(ConvertFloatTarget(target));
                 }
             }
 
@@ -188,6 +188,25 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
                 blendShapeName = source.blendShapeName,
                 onStateActiveSelection = source.goState == QuickToggleConfig.GameObjectState.Active ? 0 : 1,
                 onStateBlendShapeValue = source.bsState == QuickToggleConfig.BlendShapeState.Zero ? 0 : 1,
+                splitBlendShape = source.splitBlendShape,
+                secondaryBlendShapeName = source.secondaryBlendShapeName,
+                secondaryBlendShapeValue = source.secondaryDirection == QuickToggleConfig.FloatDirection.ZeroToFull ? 0 : 1
+            };
+        }
+
+        private ToggleConfig.TargetItem ConvertFloatTarget(QuickToggleConfig.TargetItemData source)
+        {
+            if (source == null)
+            {
+                return new ToggleConfig.TargetItem();
+            }
+
+            return new ToggleConfig.TargetItem
+            {
+                targetObject = source.targetObject,
+                controlType = 1,
+                blendShapeName = source.blendShapeName,
+                onStateBlendShapeValue = source.direction == QuickToggleConfig.FloatDirection.ZeroToFull ? 0 : 1,
                 splitBlendShape = source.splitBlendShape,
                 secondaryBlendShapeName = source.secondaryBlendShapeName,
                 secondaryBlendShapeValue = source.secondaryDirection == QuickToggleConfig.FloatDirection.ZeroToFull ? 0 : 1

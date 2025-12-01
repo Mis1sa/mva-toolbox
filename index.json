@@ -103,6 +103,20 @@
             "com.vrchat.avatars": ">=3.2.0",
             "nadena.dev.ndmf": ">=1.10.0-beta.0"
           }
+        },
+        "0.4.0": {
+          "name": "com.mis1sa.mva-toolbox",
+          "displayName": "MVA Toolbox",
+          "version": "0.4.0",
+          "description": "Simple Avatar tools.",
+          "unity": "2022.3",
+          "license": "MIT",
+          "url": "https://github.com/Mis1sa/mva-toolbox/releases/download/V0.4.0/mva-toolbox-0.4.0.zip",
+          "legacyFolders": {},
+          "vpmDependencies": {
+            "com.vrchat.avatars": ">=3.2.0",
+            "nadena.dev.ndmf": ">=1.10.0-beta.0"
+          }
         }
       }
     }

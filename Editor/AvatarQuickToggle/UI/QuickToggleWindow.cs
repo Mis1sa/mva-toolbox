@@ -348,7 +348,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 float prevLabel = EditorGUIUtility.labelWidth; EditorGUIUtility.labelWidth = 80f;
-                // Left control: Layer Name (TextField or Popup)
+
                 if (!overwriteLayer)
                 {
                     layerName = EditorGUILayout.TextField("层级名称", layerName);
@@ -427,7 +427,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
 AfterLayerPopup: ;
                     }
                 }
-                // Right control: Overwrite toggle
+
                 bool newOverwriteLayer = EditorGUILayout.ToggleLeft("覆盖层级", overwriteLayer, GUILayout.Width(100));
                 if (newOverwriteLayer != overwriteLayer)
                 {
@@ -443,7 +443,7 @@ AfterLayerPopup: ;
             using (new EditorGUILayout.HorizontalScope())
             {
                 float prevLabel = EditorGUIUtility.labelWidth; EditorGUIUtility.labelWidth = 80f;
-                // Left control: Parameter Name (TextField or Popup filtered by type)
+
                 if (!overwriteParameter)
                 {
                     parameterName = EditorGUILayout.TextField("参数名称", parameterName);
@@ -520,7 +520,7 @@ AfterLayerPopup: ;
 AfterParameterPopup: ;
                     }
                 }
-                // Right control: Overwrite toggle
+
                 bool newOverwriteParameter = EditorGUILayout.ToggleLeft("覆盖参数", overwriteParameter, GUILayout.Width(100));
                 if (newOverwriteParameter != overwriteParameter)
                 {
@@ -598,7 +598,6 @@ AfterParameterPopup: ;
             GUILayout.Label("菜单设置", EditorStyles.boldLabel);
             GUILayout.EndHorizontal();
 
-            // 按 SSG 逻辑：折叠开关即代表“创建菜单”
             createMenuControl = menuExpanded;
 
             if (menuExpanded)
@@ -698,7 +697,7 @@ AfterParameterPopup: ;
                 item.targetObject = ToolboxUtils.ResolveMergeNodeTarget(newBoolTarget);
                 if (item.targetObject != null)
                 {
-                    // 计算是否允许 GameObject 与可用 BlendShape 名称（去重同物体）
+                    // 计算是否允许 GameObject 与可用 BlendShape 名称
                     bool hasGOElsewhere = false;
                     bool hasGOInPrevious = false;
                     for (int k = 0; k < boolTargets.Count; k++)
@@ -730,10 +729,6 @@ AfterParameterPopup: ;
                     }
                     string[] available = availableList.ToArray();
 
-                    // 若当前为 BlendShape 模式，但：
-                    // 1）可用列表为空，或
-                    // 2）已经绑定的形态键名非空且不在可用列表中，
-                    // 则强制退回 GameObject 模式并清空名称。对于首次切换到 BlendShape 模式的情况（名称仍为空），不触发退回。
                     if (item.controlType == 1 && (available.Length == 0 || (!string.IsNullOrEmpty(item.blendShapeName) && System.Array.IndexOf(available, item.blendShapeName) < 0)))
                     {
                         item.controlType = 0;
@@ -923,10 +918,6 @@ AfterParameterPopup: ;
                         }
                         string[] available = availableList.ToArray();
 
-                        // 若当前为 BlendShape 模式，但：
-                        // 1）可用列表为空，或
-                        // 2）已经绑定的形态键名非空且不在可用列表中，
-                        // 则强制退回 GameObject 模式并清空名称。对于首次切换到 BlendShape 模式的情况（名称仍为空），不触发退回。
                         if (item.controlType == 1 && (available.Length == 0 || (!string.IsNullOrEmpty(item.blendShapeName) && System.Array.IndexOf(available, item.blendShapeName) < 0)))
                         {
                             item.controlType = 0;
@@ -1061,6 +1052,11 @@ AfterParameterPopup: ;
                 intGroups.Add(new IntStateGroup { targetItems = new List<TargetItem> { new TargetItem() } });
                 EnsureIntMenuNameCapacity();
                 OnTargetsModified();
+                if (isPreviewing)
+                {
+                    previewIntValue = Mathf.Clamp(previewIntValue, 0, Mathf.Max(0, intGroups.Count - 1));
+                    ApplyPreviewStateInt(previewIntValue);
+                }
             }
         }
 
@@ -1074,9 +1070,7 @@ AfterParameterPopup: ;
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.BeginHorizontal();
                 var newFloatTarget = (GameObject)EditorGUILayout.ObjectField(item.targetObject, typeof(GameObject), true, GUILayout.Width(W_OBJECT));
-                // 原代码直接将 ObjectField 的结果赋给 targetObject，仅支持普通 SMR，
-                // 无法在拖入处于 MSM 合并列表中的子物体时自动替换为 MSM 节点。
-                // 这里改为通过 ResolveMergeNodeTarget 解析，以与 Bool/Int 模式保持一致的 AAO MSM 行为。
+
                 item.targetObject = ToolboxUtils.ResolveMergeNodeTarget(newFloatTarget);
                 
                 if (item.targetObject != null)
@@ -1280,11 +1274,7 @@ AfterParameterPopup: ;
                 while (dst.targetItems.Count > srcCount) dst.targetItems.RemoveAt(dst.targetItems.Count - 1);
                 for (int j = 0; j < srcCount; j++)
                 {
-                    var s = src.targetItems[j];
-                    var d = dst.targetItems[j];
-                    d.targetObject = s.targetObject;
-                    d.controlType = s.controlType;
-                    d.blendShapeName = s.blendShapeName;
+                    dst.targetItems[j] = CloneTargetItem(src.targetItems[j]);
                 }
                 intGroups[g] = dst;
             }
@@ -1412,8 +1402,6 @@ AfterParameterPopup: ;
         {
             if (go == null) return System.Array.Empty<string>();
 
-            // 使用公共工具方法收集可用 BlendShape 名称（兼容 AAO MergeSkinnedMesh 结构），
-            // 行为与原 SSG 的 GetAvailableBlendShapeNames 一致：在解析 SMR、Merge 节点及子层级中查找。
             return ToolboxUtils.GetAvailableBlendShapeNames(go);
         }
 
@@ -1424,7 +1412,6 @@ AfterParameterPopup: ;
             {
                 if (string.IsNullOrEmpty(n) || n == current || n == "(None)") continue;
                 bool used = false;
-                // check across all lists for same GO
                 foreach (var it in boolTargets)
                     if (it.targetObject == go && it.blendShapeName == n) { used = true; break; }
                 foreach (var grp in intGroups)
@@ -1470,14 +1457,15 @@ AfterParameterPopup: ;
             var next = NextUnusedBlendShapeWithinList(it.targetObject, it.blendShapeName, list);
             if (string.IsNullOrEmpty(next)) return;
 
-            var copy = new TargetItem
-            {
-                targetObject = it.targetObject,
-                controlType = 1,
-                blendShapeName = next,
-                onStateBlendShapeValue = it.onStateBlendShapeValue,
-            };
+            var copy = CloneTargetItem(it);
+            copy.controlType = 1;
+            copy.blendShapeName = next;
             list.Insert(index + 1, copy);
+            OnTargetsModified();
+            if (isPreviewing)
+            {
+                ApplyPreviewStateInt(Mathf.Clamp(previewIntValue, 0, Mathf.Max(0, intGroups.Count - 1)));
+            }
         }
 
         private void DrawInvisibleObjectFieldExpand()
@@ -1815,7 +1803,6 @@ AfterParameterPopup: ;
             }
         }
 
-        // Config mapping
         private void LoadFromConfig(QuickToggleConfig config)
         {
             availableConfigEntries.Clear();
@@ -1897,12 +1884,9 @@ AfterParameterPopup: ;
             // 配置名称载入到临时字段，供 UI 显示与编辑
             currentConfigDisplayName = entry.displayName;
 
-            // 进入编辑模式后，需要根据当前 Avatar 刷新可用参数名列表，并用 entry.parameterName 初始化下拉索引，
-            // 以避免在覆盖参数模式下参数下拉为空或未选中已保存的参数名。
             RefreshAvailableParameterNames();
             EnsureParameterSelection();
 
-            // map targets from entry into UI lists according to layer type
             MapEntryTargetsToUI(entry);
         }
 
@@ -1949,7 +1933,7 @@ AfterParameterPopup: ;
                     result.intMenuItemNames.Add(value);
                 }
             }
-            // map UI targets back to entry according to type
+
             switch (selectedLayerType)
             {
                 case 0:
@@ -2276,13 +2260,12 @@ AfterParameterPopup: ;
 
         private void EnsureDefaultTargets()
         {
-            // Bool mode: ensure one slot
             if (selectedLayerType == 0)
             {
                 if (boolTargets.Count == 0)
                     boolTargets.Add(new TargetItem());
             }
-            // Int mode: ensure至少一个组且每组至少一个条目
+
             else if (selectedLayerType == 1)
             {
                 if (intGroups.Count == 0)
@@ -2296,7 +2279,7 @@ AfterParameterPopup: ;
                 }
                 EnsureIntMenuNameCapacity();
             }
-            // Float mode: ensure one slot
+
             else if (selectedLayerType == 2)
             {
                 if (floatTargets.Count == 0)
@@ -2336,8 +2319,7 @@ AfterParameterPopup: ;
             availableMenuPaths = System.Array.Empty<string>();
             selectedLayerPopupIndex = -1;
             selectedParameterPopupIndex = -1;
-            // 原逻辑：每次加载 Avatar 时将菜单索引重置为 0，并把 currentMenuPath 写成 "/" 作为虚根；
-            // 新逻辑：不再使用 "/" 作为固定虚根，由 RefreshMenuPaths 依据真实菜单结构决定初始选项。
+
             selectedMenuPathIndex = -1;
             menuPathMap = new Dictionary<string, VRCExpressionsMenu>();
             // 将当前菜单路径重置为空字符串，由 RefreshMenuPaths 在有可用菜单时填充实际根路径
@@ -2471,7 +2453,6 @@ AfterParameterPopup: ;
                 return;
             }
 
-            // 与原 SSG 类似：直接使用 SDK 提供的菜单映射 key 列表，不做额外排序与虚拟根路径
             menuPathMap = ToolboxUtils.GetMenuMap(expressionsMenu) ?? new Dictionary<string, VRCExpressionsMenu>();
             availableMenuPaths = menuPathMap.Keys.ToArray();
 
@@ -2485,8 +2466,6 @@ AfterParameterPopup: ;
             // 若处于“从配置编辑”模式，优先使用配置中保存的 menuPath
             if (isEditingConfigEntry && !string.IsNullOrEmpty(currentMenuPath))
             {
-                // 兼容旧配置中以 "/" 为虚根的路径：
-                // 例如 "/Root/Sub" 与 "Root/Sub" 视为等价，这里统一规范化后再匹配。
                 var normalized = NormalizeMenuPathForLookup(currentMenuPath);
                 if (menuPathMap.ContainsKey(normalized))
                 {
@@ -2504,14 +2483,10 @@ AfterParameterPopup: ;
                 }
             }
 
-            // 非编辑模式或配置路径无效时，行为与 SSG 一致：默认选中第 0 项
             selectedMenuPathIndex = Mathf.Clamp(selectedMenuPathIndex, 0, availableMenuPaths.Length - 1);
             currentMenuPath = availableMenuPaths[selectedMenuPathIndex];
         }
 
-        // 规范化菜单路径字符串，用于从映射中查找：
-        // - 去除前导 "/"，兼容旧以虚根表示的路径；
-        // - 单独的 "/" 视为“根菜单”，映射为当前 expressionsMenu.name 对应的根路径。
         private string NormalizeMenuPathForLookup(string path)
         {
             if (string.IsNullOrEmpty(path)) return string.Empty;

@@ -39,6 +39,9 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时�
 - **Quick Transition**
   - 批量查看和编辑某一层或某个状态机中的 Transition 设置，用于快速统一过渡时间、Exit Time 或条件配置。
 
+- **Quick Remove Bones**
+  - 自动分析 Avatar 中待移除 Renderer 所独占的骨骼，支持一键移除网格与对应骨骼，避免手动查找引用。
+
 - **必需**
   - Unity **2022.3** 及以上
   - VRChat Avatars SDK：`com.vrchat.avatars`

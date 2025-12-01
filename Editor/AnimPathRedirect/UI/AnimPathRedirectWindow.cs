@@ -278,7 +278,10 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                     : g.CurvesByType.Sum(kvp => kvp.Value.Count(c => !c.IsMarkedForRemoval))
             );
 
-            int totalChanges = pathChangeCount + componentChangeCount + activeMissingCount;
+            int removalOnlyCount = _service.MissingGroups
+                .Sum(g => g.CurvesByType.Sum(kvp => kvp.Value.Count(c => c.IsMarkedForRemoval)));
+
+            int totalChanges = pathChangeCount + componentChangeCount + activeMissingCount + removalOnlyCount;
 
             if (pathChangeCount > 0 && !_service.HierarchyChanged)
             {
@@ -287,7 +290,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
 
             if (_service.HierarchyChanged)
             {
-                EditorGUILayout.HelpBox($"层级结构已被修改。路径变动/删除：{pathChangeCount} 组，组件变更：{componentChangeCount} 条，缺失绑定（待处理）：{activeMissingCount} 条。", MessageType.Warning);
+                EditorGUILayout.HelpBox($"层级结构已被修改。路径变动/删除：{pathChangeCount} 组，组件变更：{componentChangeCount} 条，缺失绑定（待处理）：{activeMissingCount} 条，标记移除：{removalOnlyCount} 条。", MessageType.Warning);
             }
 
             EditorGUILayout.LabelField($"追踪中... 总变动/缺失量: {totalChanges}", EditorStyles.boldLabel);

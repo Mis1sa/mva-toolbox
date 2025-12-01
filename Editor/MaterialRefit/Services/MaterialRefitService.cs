@@ -35,6 +35,7 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
         bool _extraCreateMaterials = true;
         string _saveFolderRelative = "Assets/MVA Toolbox/MR/";
+        string _materialSuffix = string.Empty;
 
         bool _showModified = true;
         bool _hasPreviewChanges;
@@ -60,6 +61,12 @@ namespace MVA.Toolbox.MaterialRefit.Services
         {
             get => _saveFolderRelative;
             set => _saveFolderRelative = value;
+        }
+
+        public string MaterialSuffix
+        {
+            get => _materialSuffix;
+            set => _materialSuffix = value ?? string.Empty;
         }
 
         public bool HasPreviewChanges => _hasPreviewChanges;
@@ -117,7 +124,14 @@ namespace MVA.Toolbox.MaterialRefit.Services
                 _materialReplacements[source] = replacement;
             }
 
-            ApplyMaterialPreview();
+            if (_showModified)
+            {
+                ApplyMaterialPreview();
+            }
+            else
+            {
+                ShowModified();
+            }
         }
 
         public void UpdateTextureReplacement(Texture source, Texture replacement)
@@ -141,7 +155,14 @@ namespace MVA.Toolbox.MaterialRefit.Services
                 _textureReplacements[source] = replacement;
             }
 
-            ApplyTexturePreview();
+            if (_showModified)
+            {
+                ApplyTexturePreview();
+            }
+            else
+            {
+                ShowModified();
+            }
         }
 
         public void ApplyChanges()
@@ -258,6 +279,13 @@ namespace MVA.Toolbox.MaterialRefit.Services
             }
 
             var renderers = _targetRoot.GetComponentsInChildren<Renderer>(true);
+
+            if (_hasPreviewChanges)
+            {
+                RestoreRendererMaterialsFromBackup(false);
+                DestroyTempMaterialInstances();
+                _hasPreviewChanges = false;
+            }
 
             if (!_hasPreviewChanges)
             {
@@ -616,7 +644,16 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
                     if (changed)
                     {
-                        string safeName = MakeSafeFilename(origMat.name) + "_copy.mat";
+                        string safeName = MakeSafeFilename(origMat.name);
+                        if (!string.IsNullOrEmpty(_materialSuffix))
+                        {
+                            string suffixSafe = MakeSafeFilename(_materialSuffix);
+                            if (!string.IsNullOrEmpty(suffixSafe))
+                            {
+                                safeName += "_" + suffixSafe;
+                            }
+                        }
+                        safeName += ".mat";
                         string assetPath = targetFolder + "/" + safeName;
                         assetPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
                         AssetDatabase.CreateAsset(newMat, assetPath);
@@ -694,17 +731,14 @@ namespace MVA.Toolbox.MaterialRefit.Services
                 AssetDatabase.SaveAssets();
             }
 
-            _originalRendererMaterials.Clear();
-            foreach (var t in _tempMaterialInstances.Values)
+            if (_hasBackup && !_extraCreateMaterials)
             {
-                if (t != null)
-                {
-                    UnityEngine.Object.DestroyImmediate(t);
-                }
+                RestoreRendererMaterialsFromBackup(false);
             }
 
-            _tempMaterialInstances.Clear();
-            _tempToOriginal.Clear();
+            DestroyTempMaterialInstances();
+
+            _originalRendererMaterials.Clear();
             _hasBackup = false;
             _hasPreviewChanges = false;
             _applied = true;
@@ -748,38 +782,10 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
         void RestoreOriginals()
         {
-            foreach (var kv in _originalRendererMaterials)
-            {
-                if (kv.Key == null)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    kv.Key.sharedMaterials = kv.Value;
-                }
-                catch
-                {
-                }
-            }
-
-            _originalRendererMaterials.Clear();
-
-            foreach (var t in _tempMaterialInstances.Values)
-            {
-                if (t != null)
-                {
-                    UnityEngine.Object.DestroyImmediate(t);
-                }
-            }
-
-            _tempMaterialInstances.Clear();
-            _tempToOriginal.Clear();
-
+            RestoreRendererMaterialsFromBackup(true);
+            DestroyTempMaterialInstances();
             _hasPreviewChanges = false;
             _applied = false;
-            _hasBackup = false;
         }
 
         void ClearPreviewState()
@@ -796,6 +802,39 @@ namespace MVA.Toolbox.MaterialRefit.Services
             _materialReplacements.Clear();
             _textureReplacements.Clear();
 
+            DestroyTempMaterialInstances();
+            _originalRendererMaterials.Clear();
+            _hasPreviewChanges = false;
+            _hasBackup = false;
+        }
+
+        void RestoreRendererMaterialsFromBackup(bool clearBackupCache)
+        {
+            foreach (var kv in _originalRendererMaterials)
+            {
+                if (kv.Key == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    kv.Key.sharedMaterials = kv.Value;
+                }
+                catch
+                {
+                }
+            }
+
+            if (clearBackupCache)
+            {
+                _originalRendererMaterials.Clear();
+                _hasBackup = false;
+            }
+        }
+
+        void DestroyTempMaterialInstances()
+        {
             try
             {
                 foreach (var t in _tempMaterialInstances.Values)
@@ -812,9 +851,6 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
             _tempMaterialInstances.Clear();
             _tempToOriginal.Clear();
-            _originalRendererMaterials.Clear();
-            _hasPreviewChanges = false;
-            _hasBackup = false;
         }
 
         void ShowOriginals()

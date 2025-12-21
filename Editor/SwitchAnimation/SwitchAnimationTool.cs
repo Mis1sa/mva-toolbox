@@ -19,59 +19,74 @@ namespace MVA.Toolbox.SwitchAnimation.Editor
         private const int MenuPriority = 52;
         private const string MenuPath = "Tools/MVA Toolbox/Switch Anim/";
 
-        private static GlobalInputCatcher s_InputCatcher;
+        private static bool s_HandlersActive;
+        private static readonly EventInfo s_GlobalEventInfo = typeof(EditorApplication).GetEvent("globalEventHandler", BindingFlags.Static | BindingFlags.Public);
+        private static readonly Action s_GlobalEventDelegate = HandleGlobalEvent;
 
         static SwitchAnimationTool()
         {
-            EditorApplication.delayCall += EnableInputCatcher;
+            EditorApplication.delayCall += EnableInputHandlers;
+            AssemblyReloadEvents.beforeAssemblyReload += DisableInputHandlers;
         }
 
-        // 启用隐藏窗口，用于捕获全局快捷键
-        private static void EnableInputCatcher()
+        // 通过全局事件回调捕获快捷键，避免创建隐藏窗口污染布局
+        private static void EnableInputHandlers()
         {
-            if (s_InputCatcher == null)
+            if (s_HandlersActive)
+                return;
+
+            if (s_GlobalEventInfo != null)
             {
-                s_InputCatcher = ScriptableObject.CreateInstance<GlobalInputCatcher>();
-                s_InputCatcher.Initialize();
+                s_GlobalEventInfo.RemoveEventHandler(null, s_GlobalEventDelegate);
+                s_GlobalEventInfo.AddEventHandler(null, s_GlobalEventDelegate);
             }
+            SceneView.duringSceneGui -= HandleSceneViewEvent;
+            SceneView.duringSceneGui += HandleSceneViewEvent;
+
+            s_HandlersActive = true;
         }
 
-        private class GlobalInputCatcher : EditorWindow
+        private static void DisableInputHandlers()
         {
-            public void Initialize()
+            if (!s_HandlersActive)
+                return;
+
+            if (s_GlobalEventInfo != null)
             {
-                EditorApplication.update += Repaint;
+                s_GlobalEventInfo.RemoveEventHandler(null, s_GlobalEventDelegate);
             }
+            SceneView.duringSceneGui -= HandleSceneViewEvent;
+            s_HandlersActive = false;
+        }
 
-            private void OnDestroy()
+        private static void HandleGlobalEvent()
+        {
+            ProcessKeyboardEvent(Event.current);
+        }
+
+        private static void HandleSceneViewEvent(SceneView view)
+        {
+            ProcessKeyboardEvent(Event.current);
+        }
+
+        private static void ProcessKeyboardEvent(Event currentEvent)
+        {
+            if (currentEvent == null || currentEvent.type != EventType.KeyDown)
+                return;
+
+            bool isCombo = currentEvent.control && currentEvent.alt && currentEvent.shift;
+            if (!isCombo)
+                return;
+
+            if (currentEvent.keyCode == KeyCode.Z)
             {
-                EditorApplication.update -= Repaint;
-                if (s_InputCatcher == this)
-                {
-                    s_InputCatcher = null;
-                }
+                CallSwitch(isNext: false);
+                currentEvent.Use();
             }
-
-            private void OnGUI()
+            else if (currentEvent.keyCode == KeyCode.X)
             {
-                var currentEvent = Event.current;
-                if (currentEvent.type != EventType.KeyDown)
-                    return;
-
-                bool isCombo = currentEvent.control && currentEvent.alt && currentEvent.shift;
-                if (!isCombo)
-                    return;
-
-                if (currentEvent.keyCode == KeyCode.Z)
-                {
-                    CallSwitch(isNext: false);
-                    currentEvent.Use();
-                }
-                else if (currentEvent.keyCode == KeyCode.X)
-                {
-                    CallSwitch(isNext: true);
-                    currentEvent.Use();
-                }
+                CallSwitch(isNext: true);
+                currentEvent.Use();
             }
         }
 

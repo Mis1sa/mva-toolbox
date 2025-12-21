@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0] - 2025-12-21
+
+### Added
+
+- Quick Animator Edit：整合 **Quick Add Parameter / Quick State / Quick Transition / Animator Controller Rebuilt** 的主要功能于单一窗口，并新增参数与 BlendTree 相关的编辑流程，保持统一上下文与操作体验。
+
+### Fixed
+
+- 修复 Avatar Quick Toggle 在 Int Switch 模式下无法正确切换 WD 编辑模式的问题。
+
 ## [0.4.0] - 2025-12-01
 
 ### Added

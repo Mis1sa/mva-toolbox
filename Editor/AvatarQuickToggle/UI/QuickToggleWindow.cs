@@ -1046,7 +1046,8 @@ AfterParameterPopup: ;
                 if (removeGroupIndex < intMenuItemNames.Count)
                     intMenuItemNames.RemoveAt(removeGroupIndex);
             }
-            if (!editInWDOnMode && Event.current.type == EventType.Repaint) SyncIntGroup0ToOthers();
+            if (!editInWDOnMode && Event.current.type == EventType.Repaint)
+                IntGroupSnapshotConverter.SyncStructureFromTemplate(intGroups);
             if (GUILayout.Button("添加组"))
             {
                 intGroups.Add(new IntStateGroup { targetItems = new List<TargetItem> { new TargetItem() } });
@@ -1261,25 +1262,6 @@ AfterParameterPopup: ;
             if (GUILayout.Button("新目标")) floatTargets.Add(new TargetItem { controlType = 1 });
         }
 
-        private void SyncIntGroup0ToOthers()
-        {
-            if (intGroups.Count == 0) return;
-            var src = intGroups[0];
-            for (int g = 1; g < intGroups.Count; g++)
-            {
-                var dst = intGroups[g];
-                if (dst.targetItems == null) dst.targetItems = new List<TargetItem>();
-                int srcCount = src.targetItems.Count;
-                while (dst.targetItems.Count < srcCount) dst.targetItems.Add(new TargetItem());
-                while (dst.targetItems.Count > srcCount) dst.targetItems.RemoveAt(dst.targetItems.Count - 1);
-                for (int j = 0; j < srcCount; j++)
-                {
-                    dst.targetItems[j] = CloneTargetItem(src.targetItems[j]);
-                }
-                intGroups[g] = dst;
-            }
-        }
-
         private void ApplyWDConversion(bool toWDOn)
         {
             if (selectedLayerType != 1 || intGroups.Count == 0)
@@ -1288,18 +1270,15 @@ AfterParameterPopup: ;
                 return;
             }
 
-            // 基于当前 Int 目标构建预览快照，用于 WD On/Off 转换（转换逻辑定义于 IntGroupSnapshotConverter.cs）
-            var baseline = previewState.BuildBaselineSnapshot(intGroups);
             if (toWDOn)
             {
-                var converted = IntGroupSnapshotConverter.ToWDOn(previewState, baseline);
-                ReplaceIntGroups(converted.groups);
+                IntGroupSnapshotConverter.StripDefaultEntriesForWDOn(intGroups, previewState);
                 editInWDOnMode = true;
             }
             else
             {
-                var converted = IntGroupSnapshotConverter.ToWDOff(previewState, baseline);
-                ReplaceIntGroups(converted.groups);
+                var rebuilt = IntGroupSnapshotConverter.RebuildWDOffGroups(intGroups, previewState);
+                ReplaceIntGroups(rebuilt);
                 editInWDOnMode = false;
             }
 

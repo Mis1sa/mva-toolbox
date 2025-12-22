@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.1] - 2025-12-22
+
+### Changed
+
+- 将 **Find Anim / Bake Default Anim / Anim Path Redirect** 三个旧窗口合并为统一的 **AnimFix Utility**，共享目标与控制器/层级上下文，分 Tab 使用。
+
+### Fixed
+
+- 修复 **Switch Anim** 必须选中动画控制器所在物体才能切换动画的问题，现在会自动读取 Animation 窗口的活动对象并在未选中场景对象时继续工作。
+
 ## [0.5.0] - 2025-12-21
 
 ### Added

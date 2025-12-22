@@ -1,19 +1,23 @@
+using System;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using System.Linq;
 using MVA.Toolbox.AnimPathRedirect.Services;
+using MVA.Toolbox.AnimFixUtility.Services;
 using MVA.Toolbox.Public;
 
-namespace MVA.Toolbox.AnimPathRedirect.UI
+namespace MVA.Toolbox.AnimFixUtility.Windows
 {
-    // Anim Path Redirect 主窗口（IMGUI），核心逻辑由 AnimPathRedirectService 提供（见 AnimPathRedirectService.cs）
-    public sealed class AnimPathRedirectWindow : EditorWindow
+    // Anim Path Redirect 面板（IMGUI），由 AnimFix Utility 主窗口托管
+    public sealed class AnimFixRedirectWindow : IDisposable
     {
-        // APR 主服务实例
-        AnimPathRedirectService _service;
-        // 主滚动视图（使用公共工具 ToolboxUtils.ScrollView，定义于 MVA.Toolbox.Public.ToolboxUtils）
-        Vector2 _scroll;
+        private readonly AnimFixUtilityContext _context;
+        private readonly AnimPathRedirectService _service;
+        private readonly Action _repaint;
+
+        // 主滚动视图
+        private Vector2 _scroll;
 
         GUIStyle _missingLabelStyle;
         GUIStyle _removedLabelStyle;
@@ -23,25 +27,25 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
         GUIStyle _wrapLabelStyle;
         GUIStyle _wrapMiniLabelStyle;
 
-        [MenuItem("Tools/MVA Toolbox/Anim Path Redirect", false, 9)]
-        public static void Open()
+        public AnimFixRedirectWindow(AnimFixUtilityContext context, Action repaint)
         {
-            var w = GetWindow<AnimPathRedirectWindow>("Anim Path Redirect");
-            w.minSize = new Vector2(560f, 600f);
+            _context = context;
+            _repaint = repaint;
+            _service = new AnimPathRedirectService();
+            EditorApplication.hierarchyChanged += HandleHierarchyChanged;
         }
 
-        void OnEnable()
+        public bool IsTracking => _service.HasSnapshot;
+
+        public void Dispose()
         {
-            if (_service == null)
-            {
-                _service = new AnimPathRedirectService();
-            }
+            EditorApplication.hierarchyChanged -= HandleHierarchyChanged;
         }
 
-        void OnHierarchyChange()
+        private void HandleHierarchyChanged()
         {
             _service?.OnHierarchyChanged();
-            Repaint();
+            _repaint?.Invoke();
         }
 
         // 懒加载 GUIStyle，避免在 OnGUI 中频繁分配样式对象
@@ -106,106 +110,41 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             }
         }
 
-        void OnGUI()
+        public void OnGUI()
         {
-            if (_service == null)
-            {
-                _service = new AnimPathRedirectService();
-            }
-
             EnsureStyles();
 
-            _scroll = ToolboxUtils.ScrollView(_scroll, () =>
+            _service.SetTarget(_context.TargetRoot);
+
+            if (_service.TargetRoot == null)
             {
-                DrawTargetSelection();
-
-                GUILayout.Space(4f);
-
-                if (_service.TargetRoot == null)
-                {
-                    EditorGUILayout.HelpBox("请拖入一个 Avatar 或带 Animator 组件的物体。", MessageType.Info);
-                    return;
-                }
-
-                DrawControllerAndLayerSelection();
-
-                GUILayout.Space(4f);
-
-                DrawTrackingAndResults();
-            });
-        }
-
-        void DrawTargetSelection()
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("目标对象", EditorStyles.boldLabel);
-
-            EditorGUI.BeginChangeCheck();
-            var newTarget = (GameObject)EditorGUILayout.ObjectField("Avatar / 带 Animator 的物体", _service.TargetRoot, typeof(GameObject), true);
-            if (EditorGUI.EndChangeCheck())
-            {
-                if (newTarget != null && (ToolboxUtils.IsAvatarRoot(newTarget) || ToolboxUtils.HasAnimator(newTarget)))
-                {
-                    _service.SetTarget(newTarget);
-                }
-                else
-                {
-                    _service.SetTarget(null);
-                }
-            }
-
-            EditorGUILayout.EndVertical();
-        }
-
-        void DrawControllerAndLayerSelection()
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-
-            var controllers = _service.Controllers;
-            var names = _service.ControllerNames;
-
-            if (controllers.Count == 0)
-            {
-                EditorGUILayout.HelpBox("在目标对象中未找到任何 AnimatorController。", MessageType.Warning);
-                EditorGUILayout.EndVertical();
+                EditorGUILayout.HelpBox("请先在顶部选择 Avatar 或带 Animator 组件的物体。", MessageType.Info);
                 return;
             }
 
-            EditorGUI.BeginDisabledGroup(_service.HasSnapshot);
+            SyncControllerSelection();
 
-            // 控制器选择
-            int index = _service.SelectedControllerIndex;
-            if (index < 0 || index >= names.Count)
+            _scroll = ToolboxUtils.ScrollView(_scroll, DrawTrackingAndResults);
+        }
+
+        void SyncControllerSelection()
+        {
+            var controllers = _service.Controllers;
+            if (controllers.Count == 0) return;
+
+            int ctxIndex = Mathf.Clamp(_context.SelectedControllerIndex, 0, controllers.Count - 1);
+            if (!_service.HasSnapshot)
             {
-                index = 0;
-            }
-
-            string[] display = names.ToArray();
-            index = EditorGUILayout.Popup("动画控制器", index, display);
-            _service.SelectedControllerIndex = index;
-
-            var controller = _service.SelectedController;
-            string[] layerOptions;
-            if (controller != null)
-            {
-                layerOptions = controller.layers
-                    .Select(l => string.IsNullOrEmpty(l.name) ? "Layer" : l.name)
-                    .Prepend("全部层级 (ALL)")
-                    .ToArray();
+                _service.SelectedControllerIndex = ctxIndex;
+                int desiredLayer = _context.SelectedLayerIndex < 0 ? 0 : _context.SelectedLayerIndex + 1;
+                _service.SelectedLayerIndex = Mathf.Max(0, desiredLayer);
             }
             else
             {
-                layerOptions = new[] { "全部层级" };
+                _context.SelectedControllerIndex = Mathf.Clamp(_service.SelectedControllerIndex, 0, controllers.Count - 1);
+                int serviceLayer = Mathf.Max(0, _service.SelectedLayerIndex);
+                _context.SelectedLayerIndex = serviceLayer <= 0 ? -1 : serviceLayer - 1;
             }
-
-            int layerIndex = _service.SelectedLayerIndex;
-            layerIndex = Mathf.Clamp(layerIndex, 0, Mathf.Max(0, layerOptions.Length - 1));
-            layerIndex = EditorGUILayout.Popup("层级范围", layerIndex, layerOptions);
-            _service.SelectedLayerIndex = layerIndex;
-
-            EditorGUI.EndDisabledGroup();
-
-            EditorGUILayout.EndVertical();
         }
 
         // 追踪入口与结果汇总区域（调用 AnimPathRedirectService 的核心方法）
@@ -218,9 +157,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             bool hasController = _service.SelectedController != null;
             GUI.enabled = hasController;
 
-            string trackButtonLabel = _service.HasSnapshot
-                ? "退出追踪"
-                : "开始追踪";
+            string trackButtonLabel = _service.HasSnapshot ? "退出追踪" : "开始追踪";
 
             if (GUILayout.Button(trackButtonLabel, GUILayout.Height(30f)))
             {
@@ -249,7 +186,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
             if (GUILayout.Button(ignoreButtonText, GUILayout.Height(30f)))
             {
                 _service.IgnoreAllMissing = !_service.IgnoreAllMissing;
-                Repaint();
+                _repaint?.Invoke();
             }
 
             GUI.enabled = true;
@@ -322,7 +259,7 @@ namespace MVA.Toolbox.AnimPathRedirect.UI
                 EditorUtility.DisplayDialog("完成",
                     $"路径修正完成！\n重定向: {modified}\n修复: {fixedCount}\n移除: {removed}",
                     "确定");
-                Repaint();
+                _repaint?.Invoke();
             }
 
             GUI.enabled = true;

@@ -110,10 +110,12 @@ namespace MVA.Toolbox.SwitchAnimation.Editor
         }
 
         // 从当前 Animation 窗口和选中物体中，切换到上一/下一个 AnimationClip
+        private static GameObject s_LastValidGameObject;
+
         private static void CallSwitch(bool isNext)
         {
             var animationWindow = GetAnimationWindow();
-            if (animationWindow == null || Selection.activeGameObject == null)
+            if (animationWindow == null)
                 return;
 
             var animEditor = GetAnimEditor(animationWindow);
@@ -181,14 +183,32 @@ namespace MVA.Toolbox.SwitchAnimation.Editor
                 ?? Type.GetType("UnityEditorInternal.AnimationWindowSelectionItem, UnityEditor");
 
             GameObject rootGameObject = null;
-            if (currentSelectionItem != null)
+
+            // 1) 优先读取 AnimationWindowState 的 activeRootGameObject
+            var activeRootProp = stateType.GetProperty("activeRootGameObject", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (activeRootProp != null)
+            {
+                rootGameObject = activeRootProp.GetValue(stateInstance) as GameObject;
+            }
+
+            // 2) 尝试 selection 中的 m_GameObject
+            if (rootGameObject == null && currentSelectionItem != null)
             {
                 var gameObjectField = selectionItemType.GetField("m_GameObject", BindingFlags.Instance | BindingFlags.NonPublic);
                 rootGameObject = gameObjectField?.GetValue(currentSelectionItem) as GameObject;
             }
 
             if (rootGameObject == null)
-                rootGameObject = Selection.activeGameObject;
+            {
+                if (Selection.activeGameObject != null)
+                {
+                    rootGameObject = Selection.activeGameObject;
+                }
+                else if (s_LastValidGameObject != null)
+                {
+                    rootGameObject = s_LastValidGameObject;
+                }
+            }
 
             if (rootGameObject == null)
                 return null;
@@ -199,6 +219,9 @@ namespace MVA.Toolbox.SwitchAnimation.Editor
 
             var clipsList = clipsArray.ToList();
             clipsList.Sort((c1, c2) => new NaturalStringComparer().Compare(c1.name, c2.name));
+
+            s_LastValidGameObject = rootGameObject;
+
             return clipsList;
         }
 

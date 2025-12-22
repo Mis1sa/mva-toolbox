@@ -541,7 +541,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
 
             if (copy)
             {
-                treeToInsert = BlendTreeTransferService.CloneBlendTree(sourceNode.Tree, controller);
+                treeToInsert = BlendTreeEditService.CloneBlendTree(sourceNode.Tree, controller);
                 if (treeToInsert == null) return false;
                 Undo.RegisterCreatedObjectUndo(treeToInsert, "复制 BlendTree");
                 ApplyHideFlagsRecursive(treeToInsert, ControllerTreeHideFlags);
@@ -621,7 +621,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             string sanitizedFolder = folder.TrimEnd('/');
             EnsureAssetFolder(sanitizedFolder);
 
-            var clone = BlendTreeTransferService.CloneBlendTree(selectedNode.Tree, null);
+            var clone = BlendTreeEditService.CloneBlendTree(selectedNode.Tree, null);
             if (clone == null)
             {
                 EditorUtility.DisplayDialog("导出失败", "克隆 BlendTree 失败。", "确定");

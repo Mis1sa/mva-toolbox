@@ -8,9 +8,11 @@ using UnityEngine;
 using MVA.Toolbox.Public;
 using VRC.SDK3.Avatars.Components;
 
-namespace MVA.Toolbox.FindAnimation.Editor
+namespace MVA.Toolbox.AnimFixUtility.Shared
 {
-    // 右键菜单：从 AnimationClip 跳转到相关 Animator / Avatar
+    /// <summary>
+    /// AnimationClip 跳转工具：从剪辑定位到场景中的 Animator 或 Avatar
+    /// </summary>
     public static class AnimJumpTool
     {
         private class FoundControllerInfo
@@ -24,10 +26,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
         private static void JumpToAnimatorMenu()
         {
             var clip = Selection.activeObject as AnimationClip;
-            if (clip == null)
-            {
-                return;
-            }
+            if (clip == null) return;
 
             TryJumpToClip(clip);
         }
@@ -35,21 +34,12 @@ namespace MVA.Toolbox.FindAnimation.Editor
         [MenuItem("Assets/MVA Toolbox/Jump To Animator", true)]
         private static bool JumpToAnimatorMenuValidate()
         {
-            if (Selection.objects.Length != 1)
-            {
-                return false;
-            }
-
-            return Selection.activeObject is AnimationClip;
+            return Selection.objects.Length == 1 && Selection.activeObject is AnimationClip;
         }
 
-        // 从 AnimationClip 跳转到场景中的 Avatar / Animator，并在 Animation 窗口中显示该剪辑
         public static bool TryJumpToClip(AnimationClip clip)
         {
-            if (clip == null)
-            {
-                return false;
-            }
+            if (clip == null) return false;
 
             Selection.activeObject = clip;
 
@@ -60,11 +50,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
                 {
                     var target = info.TargetGameObject;
                     var controller = info.FoundController;
-
-                    if (target == null || controller == null)
-                    {
-                        return false;
-                    }
+                    if (target == null || controller == null) return false;
 
                     if (info.IsFromVrcDescriptor)
                     {
@@ -84,11 +70,9 @@ namespace MVA.Toolbox.FindAnimation.Editor
                             $"已定位到对象 '{target.name}'，但无法自动在 Animation 窗口中显示该剪辑，请确认 Animation 窗口已打开并重试。",
                             "确定");
                     }
-
                     return true;
                 }
 
-                // 场景中未找到，提示在项目资产中搜索
                 ShowAssetSearchPrompt(clip);
             }
             catch (Exception ex)
@@ -101,28 +85,25 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
         private static FoundControllerInfo FindFirstControllerInScene(AnimationClip clip)
         {
-            if (clip == null)
-                return null;
+            if (clip == null) return null;
 
             var descriptors = UnityEngine.Object.FindObjectsOfType<VRCAvatarDescriptor>(true);
             var animators = UnityEngine.Object.FindObjectsOfType<Animator>(true);
 
             var candidates = new HashSet<GameObject>();
-            for (int i = 0; i < descriptors.Length; i++)
+            foreach (var descriptor in descriptors)
             {
-                var d = descriptors[i];
-                if (d != null && d.gameObject != null)
+                if (descriptor != null && descriptor.gameObject != null)
                 {
-                    candidates.Add(d.gameObject);
+                    candidates.Add(descriptor.gameObject);
                 }
             }
 
-            for (int i = 0; i < animators.Length; i++)
+            foreach (var animator in animators)
             {
-                var a = animators[i];
-                if (a != null && a.gameObject != null)
+                if (animator != null && animator.gameObject != null)
                 {
-                    candidates.Add(a.gameObject);
+                    candidates.Add(animator.gameObject);
                 }
             }
 
@@ -146,17 +127,15 @@ namespace MVA.Toolbox.FindAnimation.Editor
                 }
 
                 var animator = go.GetComponent<Animator>();
-                if (animator != null && animator.runtimeAnimatorController is AnimatorController ac)
+                if (animator != null && animator.runtimeAnimatorController is AnimatorController ac &&
+                    IsClipReferencedByController(ac, clip))
                 {
-                    if (IsClipReferencedByController(ac, clip))
+                    return new FoundControllerInfo
                     {
-                        return new FoundControllerInfo
-                        {
-                            TargetGameObject = go,
-                            FoundController = ac,
-                            IsFromVrcDescriptor = false
-                        };
-                    }
+                        TargetGameObject = go,
+                        FoundController = ac,
+                        IsFromVrcDescriptor = false
+                    };
                 }
             }
 
@@ -165,8 +144,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
         private static AnimatorController GetControllerFromDescriptor(VRCAvatarDescriptor descriptor, AnimationClip clip)
         {
-            if (descriptor == null || clip == null)
-                return null;
+            if (descriptor == null || clip == null) return null;
 
             var baseLayers = descriptor.baseAnimationLayers;
             if (baseLayers != null)
@@ -205,8 +183,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
                 "在资产中搜索",
                 "取消");
 
-            if (!shouldSearchAssets)
-                return;
+            if (!shouldSearchAssets) return;
 
             FindAndSelectInAssets(clip);
         }
@@ -218,16 +195,14 @@ namespace MVA.Toolbox.FindAnimation.Editor
             try
             {
                 string[] guids = AssetDatabase.FindAssets("t:AnimatorController");
-                int total = guids.Length;
-
-                for (int i = 0; i < total; i++)
+                for (int i = 0; i < guids.Length; i++)
                 {
                     string guid = guids[i];
                     string path = AssetDatabase.GUIDToAssetPath(guid);
 
-                    if (total > 0)
+                    if (guids.Length > 0)
                     {
-                        float progress = (float)i / total;
+                        float progress = (float)i / guids.Length;
                         EditorUtility.DisplayProgressBar("搜索 Animator Controller", path, progress);
                     }
 
@@ -258,8 +233,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
         private static bool ForceAnimationWindowToShowClip(AnimationClip clip, GameObject targetGameObject)
         {
-            if (clip == null || targetGameObject == null)
-                return false;
+            if (clip == null || targetGameObject == null) return false;
 
             try
             {
@@ -289,21 +263,22 @@ namespace MVA.Toolbox.FindAnimation.Editor
                 var selectionProperty = stateType.GetProperty("selection", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (selectionProperty == null || selectionProperty.PropertyType != selectionItemType) return false;
 
-                var createInstanceMethod = typeof(ScriptableObject).GetMethod("CreateInstance", new Type[] { typeof(Type) });
+                var createInstanceMethod = typeof(ScriptableObject).GetMethod("CreateInstance", new[] { typeof(Type) });
                 var newSelectionItem = createInstanceMethod?.Invoke(null, new object[] { selectionItemType });
                 if (newSelectionItem == null) return false;
 
-                var clipField = selectionItemType.GetField("m_AnimationClip", BindingFlags.Instance | BindingFlags.NonPublic);
-                clipField?.SetValue(newSelectionItem, clip);
+                selectionItemType.GetField("m_AnimationClip", BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?.SetValue(newSelectionItem, clip);
 
-                var gameObjectField = selectionItemType.GetField("m_GameObject", BindingFlags.Instance | BindingFlags.NonPublic);
-                gameObjectField?.SetValue(newSelectionItem, targetGameObject);
+                selectionItemType.GetField("m_GameObject", BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?.SetValue(newSelectionItem, targetGameObject);
 
                 EditorApplication.delayCall += () =>
                 {
                     selectionProperty.SetValue(stateInstance, newSelectionItem);
 
-                    var onSelectionUpdatedMethod = animEditor.GetType().GetMethod("OnSelectionUpdated", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    var onSelectionUpdatedMethod = animEditor.GetType()
+                        .GetMethod("OnSelectionUpdated", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     onSelectionUpdatedMethod?.Invoke(animEditor, null);
 
                     animationWindow.Focus();
@@ -372,8 +347,7 @@ namespace MVA.Toolbox.FindAnimation.Editor
                 return true;
             }
 
-            var tree = motion as BlendTree;
-            if (tree != null)
+            if (motion is BlendTree tree)
             {
                 var children = tree.children;
                 for (int i = 0; i < children.Length; i++)
@@ -387,55 +361,45 @@ namespace MVA.Toolbox.FindAnimation.Editor
 
             return false;
         }
-    }
 
-    internal class AssetSelectionWindow : EditorWindow
-    {
-        private AnimationClip _targetClip;
-        private List<AnimatorController> _foundControllers;
-        private Vector2 _scrollPosition;
-
-        public static void ShowWindow(AnimationClip clip, List<AnimatorController> controllers)
+        private class AssetSelectionWindow : EditorWindow
         {
-            var window = GetWindow<AssetSelectionWindow>("选择动画控制器");
-            window._targetClip = clip;
-            window._foundControllers = controllers;
-            window.minSize = new Vector2(400f, 300f);
-            window.Show();
-        }
+            private AnimationClip _targetClip;
+            private List<AnimatorController> _foundControllers;
+            private Vector2 _scrollPosition;
 
-        private void OnGUI()
-        {
-            if (_targetClip == null || _foundControllers == null || !_foundControllers.Any())
+            public static void ShowWindow(AnimationClip clip, List<AnimatorController> controllers)
             {
-                Close();
-                return;
+                var window = GetWindow<AssetSelectionWindow>("选择动画控制器");
+                window._targetClip = clip;
+                window._foundControllers = controllers;
+                window.Show();
             }
 
-            EditorGUILayout.LabelField($"动画剪辑: {_targetClip.name}", EditorStyles.boldLabel);
-            EditorGUILayout.Space();
-
-            EditorGUILayout.LabelField("以下 Animator Controller 引用了该剪辑，请选择一个以定位:", EditorStyles.wordWrappedLabel);
-            EditorGUILayout.Space();
-
-            _scrollPosition = ToolboxUtils.ScrollView(_scrollPosition, () =>
+            private void OnGUI()
             {
-                for (int i = 0; i < _foundControllers.Count; i++)
+                if (_targetClip == null || _foundControllers == null || _foundControllers.Count == 0)
                 {
-                    var controller = _foundControllers[i];
-                    if (controller == null) continue;
+                    EditorGUILayout.HelpBox("未找到可选的 Animator Controller。", MessageType.Info);
+                    return;
+                }
 
-                    EditorGUILayout.BeginHorizontal(GUI.skin.box);
-                    EditorGUILayout.ObjectField(controller.name, controller, typeof(AnimatorController), false);
+                EditorGUILayout.LabelField($"动画剪辑: {_targetClip.name}", EditorStyles.boldLabel);
+
+                _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
+                foreach (var controller in _foundControllers)
+                {
+                    if (controller == null) continue;
+                    EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+                    EditorGUILayout.ObjectField(controller, typeof(AnimatorController), false);
+                    if (GUILayout.Button("选中该控制器", GUILayout.Width(120f)))
+                    {
+                        Selection.activeObject = controller;
+                        EditorGUIUtility.PingObject(controller);
+                    }
                     EditorGUILayout.EndHorizontal();
                 }
-            });
-
-            EditorGUILayout.Space(10f);
-
-            if (GUILayout.Button("取消"))
-            {
-                Close();
+                EditorGUILayout.EndScrollView();
             }
         }
     }

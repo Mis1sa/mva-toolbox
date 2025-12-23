@@ -26,7 +26,7 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
         private AnimFixBakeWindow _bakeWindow;
         private AnimFixRedirectWindow _redirectWindow;
 
-        [MenuItem("Tools/MVA Toolbox/AnimFix Utility", false, 6)]
+        [MenuItem("Tools/MVA Toolbox/AnimFix Utility", false, 3)]
         public static void Open()
         {
             var window = GetWindow<AnimFixUtilityWindow>("AnimFix Utility");

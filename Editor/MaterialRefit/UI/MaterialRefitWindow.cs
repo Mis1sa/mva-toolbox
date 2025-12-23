@@ -24,7 +24,7 @@ namespace MVA.Toolbox.MaterialRefit.UI
 
         MaterialRefitService _service;
 
-        [MenuItem("Tools/MVA Toolbox/Material Refit", false, 2)]
+        [MenuItem("Tools/MVA Toolbox/Material Refit", false, 4)]
         public static void Open()
         {
             var w = GetWindow<MaterialRefitWindow>("Material Refit");

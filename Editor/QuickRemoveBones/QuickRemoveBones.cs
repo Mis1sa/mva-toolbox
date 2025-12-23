@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using VRC.SDK3.Avatars.Components;
 using MVA.Toolbox.Public;
 
 namespace MVA.Toolbox.QuickRemoveBones
@@ -12,44 +11,27 @@ namespace MVA.Toolbox.QuickRemoveBones
     {
         const string WindowTitle = "Quick Remove Bones";
 
-        [MenuItem("Tools/MVA Toolbox/Quick Remove Bones", false, 10)]
+        [MenuItem("Tools/MVA Toolbox/Quick Remove Bones", false, 5)]
         static void Open()
         {
             var window = GetWindow<QuickRemoveBonesWindow>(WindowTitle);
             window.minSize = new Vector2(500f, 600f);
         }
 
-        UnityEngine.Object _avatarObject;
-        VRCAvatarDescriptor _lockedAvatar;
-        bool _avatarLocked;
-
         readonly List<Renderer> _removeCandidates = new List<Renderer>();
         readonly Dictionary<Renderer, List<Transform>> _exclusiveBones = new Dictionary<Renderer, List<Transform>>();
         readonly Dictionary<int, bool> _boneFoldoutStates = new Dictionary<int, bool>();
 
         Vector2 _mainScroll;
-        Vector2 _candidateScroll;
-        Vector2 _boneScroll;
 
         void OnGUI()
         {
             _mainScroll = ToolboxUtils.ScrollView(_mainScroll, () =>
             {
-                DrawAvatarSection();
-                GUILayout.Space(6f);
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                DrawLockControls();
-                GUILayout.Space(4f);
-                if (_avatarLocked && _lockedAvatar != null)
-                {
-                    DrawCandidateSection();
-                }
+                EditorGUILayout.LabelField("添加需要移除的 Renderer", EditorStyles.boldLabel);
+                DrawCandidateSection();
                 EditorGUILayout.EndVertical();
-
-                if (!_avatarLocked || _lockedAvatar == null)
-                {
-                    return;
-                }
 
                 GUILayout.Space(6f);
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -58,60 +40,6 @@ namespace MVA.Toolbox.QuickRemoveBones
                 DrawExecuteSection();
                 EditorGUILayout.EndVertical();
             });
-        }
-
-        void DrawAvatarSection()
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("目标对象", EditorStyles.boldLabel);
-            EditorGUI.BeginDisabledGroup(_avatarLocked);
-            EditorGUI.BeginChangeCheck();
-            var picked = EditorGUILayout.ObjectField("Avatar", _avatarObject, typeof(UnityEngine.Object), true);
-            if (EditorGUI.EndChangeCheck())
-            {
-                HandleAvatarSelection(picked);
-            }
-            EditorGUI.EndDisabledGroup();
-
-            EditorGUILayout.EndVertical();
-        }
-
-        void DrawLockControls()
-        {
-            string buttonLabel = _avatarLocked ? "退出检测" : "开始检测";
-            EditorGUI.BeginDisabledGroup(_lockedAvatar == null && !_avatarLocked);
-            if (GUILayout.Button(buttonLabel, GUILayout.Height(28f)))
-            {
-                if (_avatarLocked)
-                {
-                    ExitDetectionMode();
-                }
-                else if (_lockedAvatar != null)
-                {
-                    EnterDetectionMode();
-                }
-            }
-            EditorGUI.EndDisabledGroup();
-        }
-
-        void EnterDetectionMode()
-        {
-            _avatarLocked = true;
-            _removeCandidates.Clear();
-            _exclusiveBones.Clear();
-            _candidateScroll = Vector2.zero;
-            _boneScroll = Vector2.zero;
-            _boneFoldoutStates.Clear();
-        }
-
-        void ExitDetectionMode()
-        {
-            _avatarLocked = false;
-            _removeCandidates.Clear();
-            _exclusiveBones.Clear();
-            _candidateScroll = Vector2.zero;
-            _boneScroll = Vector2.zero;
-            _boneFoldoutStates.Clear();
         }
 
         void DrawCandidateSection()
@@ -216,14 +144,14 @@ namespace MVA.Toolbox.QuickRemoveBones
 
         void TryAddCandidate(Renderer renderer)
         {
-            if (renderer == null || !_avatarLocked || _lockedAvatar == null)
+            if (renderer == null)
             {
                 return;
             }
 
-            if (!IsRendererUnderAvatar(renderer.transform))
+            if (renderer is not SkinnedMeshRenderer)
             {
-                EditorUtility.DisplayDialog("无效对象", "仅能添加当前 Avatar 下的 Renderer。", "确定");
+                EditorUtility.DisplayDialog("仅支持 SkinnedMeshRenderer", "请拖入需要移除的 SkinnedMeshRenderer。", "确定");
                 return;
             }
 
@@ -248,37 +176,15 @@ namespace MVA.Toolbox.QuickRemoveBones
             _boneFoldoutStates.Clear();
         }
 
-        bool IsRendererUnderAvatar(Transform rendererTransform)
-        {
-            if (rendererTransform == null || _lockedAvatar == null)
-            {
-                return false;
-            }
-
-            var root = _lockedAvatar.gameObject.transform;
-            var current = rendererTransform;
-            while (current != null)
-            {
-                if (current == root)
-                {
-                    return true;
-                }
-                current = current.parent;
-            }
-
-            return false;
-        }
-
         void RefreshBoneAnalysis()
         {
             _exclusiveBones.Clear();
-            if (_removeCandidates.Count == 0 || _lockedAvatar == null)
+            if (_removeCandidates.Count == 0)
             {
                 return;
             }
 
-            var skinnedMeshes = _lockedAvatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).ToList();
-            var boneUsage = BuildBoneUsage(skinnedMeshes);
+            var boneUsage = BuildBoneUsage(_removeCandidates);
 
             foreach (var candidate in _removeCandidates)
             {
@@ -293,42 +199,59 @@ namespace MVA.Toolbox.QuickRemoveBones
             }
         }
 
-        Dictionary<Transform, HashSet<Renderer>> BuildBoneUsage(List<SkinnedMeshRenderer> skinnedMeshes)
+        Dictionary<Transform, HashSet<Renderer>> BuildBoneUsage(IEnumerable<Renderer> candidates)
         {
             var map = new Dictionary<Transform, HashSet<Renderer>>();
-            foreach (var smr in skinnedMeshes)
+            var visitedRoots = new HashSet<Transform>();
+
+            foreach (var renderer in candidates)
             {
-                if (smr == null || smr.bones == null || smr.sharedMesh == null)
+                if (renderer == null)
                 {
                     continue;
                 }
 
-                var usedIndices = GetUsedBoneIndices(smr.sharedMesh);
-                if (usedIndices.Count == 0)
+                var root = renderer.transform != null ? renderer.transform.root : null;
+                if (root == null || !visitedRoots.Add(root))
                 {
                     continue;
                 }
 
-                foreach (var boneIndex in usedIndices)
+                var skinnedMeshes = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                foreach (var smr in skinnedMeshes)
                 {
-                    if (boneIndex < 0 || boneIndex >= smr.bones.Length)
+                    if (smr == null || smr.bones == null || smr.sharedMesh == null)
                     {
                         continue;
                     }
 
-                    var bone = smr.bones[boneIndex];
-                    if (bone == null)
+                    var usedIndices = GetUsedBoneIndices(smr.sharedMesh);
+                    if (usedIndices.Count == 0)
                     {
                         continue;
                     }
 
-                    if (!map.TryGetValue(bone, out var set))
+                    foreach (var boneIndex in usedIndices)
                     {
-                        set = new HashSet<Renderer>();
-                        map[bone] = set;
-                    }
+                        if (boneIndex < 0 || boneIndex >= smr.bones.Length)
+                        {
+                            continue;
+                        }
 
-                    set.Add(smr);
+                        var bone = smr.bones[boneIndex];
+                        if (bone == null)
+                        {
+                            continue;
+                        }
+
+                        if (!map.TryGetValue(bone, out var set))
+                        {
+                            set = new HashSet<Renderer>();
+                            map[bone] = set;
+                        }
+
+                        set.Add(smr);
+                    }
                 }
             }
 
@@ -445,30 +368,6 @@ namespace MVA.Toolbox.QuickRemoveBones
             _exclusiveBones.Clear();
             _boneFoldoutStates.Clear();
             EditorUtility.DisplayDialog("完成", "已移除 Renderer 及其关联骨骼，可通过 Undo 撤销。", "确定");
-        }
-
-        void HandleAvatarSelection(UnityEngine.Object picked)
-        {
-            if (picked == null)
-            {
-                if (_avatarLocked)
-                {
-                    ExitDetectionMode();
-                }
-                _avatarObject = null;
-                _lockedAvatar = null;
-                return;
-            }
-
-            var descriptor = ToolboxUtils.GetAvatarDescriptor(picked);
-            if (descriptor == null)
-            {
-                EditorUtility.DisplayDialog("无效对象", "请拖入带 VRCAvatarDescriptor 的 Avatar。", "确定");
-                return;
-            }
-
-            _lockedAvatar = descriptor;
-            _avatarObject = descriptor;
         }
 
         void EnsureFoldoutState(Renderer renderer)

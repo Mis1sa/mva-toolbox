@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2] - 2025-12-23
+
+### Changed
+
+- Quick Remove Bones：移除 Avatar 锁定流程，改为直接对拖入的 SkinnedMeshRenderer 进行独占骨骼分析，可同时处理多个 Avatar。
+- 调整工具菜单排序：AnimFix Utility、Material Refit、Quick Remove Bones 的优先级更新。
+
 ## [0.5.1] - 2025-12-22
 
 ### Changed

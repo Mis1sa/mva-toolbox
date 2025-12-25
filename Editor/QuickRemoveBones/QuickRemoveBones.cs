@@ -22,10 +22,19 @@ namespace MVA.Toolbox.QuickRemoveBones
         readonly Dictionary<Renderer, List<Transform>> _exclusiveBones = new Dictionary<Renderer, List<Transform>>();
         readonly Dictionary<int, bool> _boneFoldoutStates = new Dictionary<int, bool>();
 
+        bool _removeChildNonBoneObjects = true;
+        bool _excludeForeignChildObjects = true;
+
+        HashSet<Transform> _protectedBones = new HashSet<Transform>();
+        HashSet<Transform> _allBones = new HashSet<Transform>();
+
         Vector2 _mainScroll;
 
         void OnGUI()
         {
+            HandleGlobalDragAndDrop();
+
+            EditorGUILayout.BeginVertical(GUILayout.ExpandHeight(true));
             _mainScroll = ToolboxUtils.ScrollView(_mainScroll, () =>
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -36,10 +45,14 @@ namespace MVA.Toolbox.QuickRemoveBones
                 GUILayout.Space(6f);
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 DrawBoneSection();
-                GUILayout.Space(4f);
-                DrawExecuteSection();
                 EditorGUILayout.EndVertical();
-            });
+            }, GUILayout.ExpandHeight(true));
+            EditorGUILayout.EndVertical();
+
+            GUILayout.Space(6f);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            DrawExecuteSection();
+            EditorGUILayout.EndVertical();
         }
 
         void DrawCandidateSection()
@@ -57,6 +70,8 @@ namespace MVA.Toolbox.QuickRemoveBones
                 ClearCandidates();
             }
             EditorGUILayout.EndHorizontal();
+
+            DrawChildRemovalOptions();
 
             bool refreshed = false;
             for (int i = _removeCandidates.Count - 1; i >= 0; i--)
@@ -142,26 +157,105 @@ namespace MVA.Toolbox.QuickRemoveBones
             EditorGUI.EndDisabledGroup();
         }
 
-        void TryAddCandidate(Renderer renderer)
+        void DrawChildRemovalOptions()
+        {
+            EditorGUILayout.BeginHorizontal();
+            _removeChildNonBoneObjects = EditorGUILayout.ToggleLeft("移除子级中非骨骼物体", _removeChildNonBoneObjects);
+            using (new EditorGUI.DisabledScope(!_removeChildNonBoneObjects))
+            {
+                _excludeForeignChildObjects = EditorGUILayout.ToggleLeft("排除其他骨骼下的非骨骼物体", _excludeForeignChildObjects);
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void HandleGlobalDragAndDrop()
+        {
+            var current = Event.current;
+            if (current == null)
+            {
+                return;
+            }
+
+            var fullRect = new Rect(0f, 0f, position.width, position.height);
+            if (!fullRect.Contains(current.mousePosition))
+            {
+                return;
+            }
+
+            if (current.type == EventType.DragUpdated || current.type == EventType.DragPerform)
+            {
+                DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                if (current.type == EventType.DragPerform)
+                {
+                    DragAndDrop.AcceptDrag();
+                    TryAddCandidates(DragAndDrop.objectReferences);
+                }
+                current.Use();
+            }
+        }
+
+        void TryAddCandidates(IEnumerable<UnityEngine.Object> objects)
+        {
+            if (objects == null)
+            {
+                return;
+            }
+
+            bool added = false;
+            foreach (var obj in objects)
+            {
+                if (obj == null)
+                {
+                    continue;
+                }
+
+                if (obj is Renderer renderer)
+                {
+                    added |= TryAddCandidate(renderer, false);
+                    continue;
+                }
+
+                if (obj is GameObject go)
+                {
+                    var renderers = go.GetComponentsInChildren<Renderer>(true);
+                    foreach (var childRenderer in renderers)
+                    {
+                        added |= TryAddCandidate(childRenderer, false);
+                    }
+                }
+            }
+
+            if (added)
+            {
+                RefreshBoneAnalysis();
+            }
+        }
+
+        bool TryAddCandidate(Renderer renderer, bool refreshImmediately = true)
         {
             if (renderer == null)
             {
-                return;
+                return false;
             }
 
             if (renderer is not SkinnedMeshRenderer)
             {
                 EditorUtility.DisplayDialog("仅支持 SkinnedMeshRenderer", "请拖入需要移除的 SkinnedMeshRenderer。", "确定");
-                return;
+                return false;
             }
 
             if (_removeCandidates.Contains(renderer))
             {
-                return;
+                return false;
             }
 
             _removeCandidates.Add(renderer);
-            RefreshBoneAnalysis();
+            if (refreshImmediately)
+            {
+                RefreshBoneAnalysis();
+            }
+
+            return true;
         }
 
         void ClearCandidates()
@@ -185,6 +279,8 @@ namespace MVA.Toolbox.QuickRemoveBones
             }
 
             var boneUsage = BuildBoneUsage(_removeCandidates);
+            _allBones = new HashSet<Transform>(boneUsage.Keys);
+            UpdateProtectedBones(boneUsage);
 
             foreach (var candidate in _removeCandidates)
             {
@@ -337,6 +433,36 @@ namespace MVA.Toolbox.QuickRemoveBones
             Undo.IncrementCurrentGroup();
             int undoGroup = Undo.GetCurrentGroup();
             var removedBones = new HashSet<Transform>();
+            var bonesToRemove = new HashSet<Transform>();
+            foreach (var kvp in _exclusiveBones)
+            {
+                foreach (var bone in kvp.Value)
+                {
+                    if (bone != null)
+                    {
+                        bonesToRemove.Add(bone);
+                    }
+                }
+            }
+
+            var context = new RemovalContext(bonesToRemove, _protectedBones, _allBones);
+            var extraRemovals = new HashSet<Transform>();
+            var preservedNodes = new HashSet<Transform>();
+
+            foreach (var bone in bonesToRemove)
+            {
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                CollectChildActions(bone, context, extraRemovals, preservedNodes);
+            }
+
+            var nodesToRemove = new HashSet<Transform>(bonesToRemove);
+            nodesToRemove.UnionWith(extraRemovals);
+
+            ReleasePreservedNodes(preservedNodes, nodesToRemove);
 
             foreach (var renderer in _removeCandidates)
             {
@@ -346,21 +472,27 @@ namespace MVA.Toolbox.QuickRemoveBones
                 }
 
                 Undo.DestroyObjectImmediate(renderer.gameObject);
+            }
 
-                if (_exclusiveBones.TryGetValue(renderer, out var bones))
+            foreach (var node in extraRemovals)
+            {
+                if (node == null)
                 {
-                    for (int i = 0; i < bones.Count; i++)
-                    {
-                        var bone = bones[i];
-                        if (bone == null || removedBones.Contains(bone))
-                        {
-                            continue;
-                        }
-
-                        Undo.DestroyObjectImmediate(bone.gameObject);
-                        removedBones.Add(bone);
-                    }
+                    continue;
                 }
+
+                Undo.DestroyObjectImmediate(node.gameObject);
+            }
+
+            foreach (var bone in bonesToRemove)
+            {
+                if (bone == null || removedBones.Contains(bone))
+                {
+                    continue;
+                }
+
+                Undo.DestroyObjectImmediate(bone.gameObject);
+                removedBones.Add(bone);
             }
 
             Undo.CollapseUndoOperations(undoGroup);
@@ -409,6 +541,177 @@ namespace MVA.Toolbox.QuickRemoveBones
             }
 
             _boneFoldoutStates.Remove(renderer.GetInstanceID());
+        }
+
+        void UpdateProtectedBones(Dictionary<Transform, HashSet<Renderer>> boneUsage)
+        {
+            _protectedBones.Clear();
+            if (boneUsage == null || boneUsage.Count == 0)
+            {
+                return;
+            }
+
+            var candidateSet = new HashSet<Renderer>(_removeCandidates.Where(r => r != null));
+            foreach (var pair in boneUsage)
+            {
+                if (pair.Value.Any(renderer => !candidateSet.Contains(renderer)))
+                {
+                    _protectedBones.Add(pair.Key);
+                }
+            }
+        }
+
+        void CollectChildActions(
+            Transform bone,
+            RemovalContext context,
+            HashSet<Transform> extraRemovals,
+            HashSet<Transform> preservedNodes)
+        {
+            if (bone == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < bone.childCount; i++)
+            {
+                var child = bone.GetChild(i);
+                if (child == null || context.BonesToRemove.Contains(child))
+                {
+                    continue;
+                }
+
+                if (context.BonesToKeep.Contains(child) || HasRendererComponent(child))
+                {
+                    preservedNodes.Add(child);
+                    continue;
+                }
+
+                if (ShouldRemoveChildObject(child, context))
+                {
+                    MarkSubtreeForRemoval(child, extraRemovals, context);
+                    continue;
+                }
+
+                preservedNodes.Add(child);
+                CollectChildActions(child, context, extraRemovals, preservedNodes);
+            }
+        }
+
+        void ReleasePreservedNodes(IEnumerable<Transform> preservedNodes, HashSet<Transform> nodesToRemove)
+        {
+            foreach (var node in preservedNodes)
+            {
+                if (node == null)
+                {
+                    continue;
+                }
+
+                var parent = node.parent;
+                if (parent == null || !nodesToRemove.Contains(parent))
+                {
+                    continue;
+                }
+
+                var safeParent = FindSafeParent(parent, nodesToRemove);
+                Undo.SetTransformParent(node, safeParent, "释放骨骼子级");
+            }
+        }
+
+        static Transform FindSafeParent(Transform start, HashSet<Transform> nodesToRemove)
+        {
+            var current = start;
+            while (current != null && nodesToRemove.Contains(current))
+            {
+                current = current.parent;
+            }
+
+            return current;
+        }
+
+        bool ShouldRemoveChildObject(Transform node, RemovalContext context)
+        {
+            if (!_removeChildNonBoneObjects || node == null)
+            {
+                return false;
+            }
+
+            if (context.AllBones.Contains(node) || HasRendererComponent(node))
+            {
+                return false;
+            }
+
+            if (_excludeForeignChildObjects && ContainsProtectedElement(node, context))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        void MarkSubtreeForRemoval(Transform node, HashSet<Transform> extraRemovals, RemovalContext context)
+        {
+            if (node == null || extraRemovals.Contains(node))
+            {
+                return;
+            }
+
+            if (context.BonesToKeep.Contains(node))
+            {
+                return;
+            }
+
+            extraRemovals.Add(node);
+            for (int i = 0; i < node.childCount; i++)
+            {
+                var child = node.GetChild(i);
+                MarkSubtreeForRemoval(child, extraRemovals, context);
+            }
+        }
+
+        bool ContainsProtectedElement(Transform node, RemovalContext context)
+        {
+            var stack = new Stack<Transform>();
+            stack.Push(node);
+
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                if (current == null)
+                {
+                    continue;
+                }
+
+                if (context.BonesToKeep.Contains(current) || HasRendererComponent(current))
+                {
+                    return true;
+                }
+
+                for (int i = 0; i < current.childCount; i++)
+                {
+                    stack.Push(current.GetChild(i));
+                }
+            }
+
+            return false;
+        }
+
+        static bool HasRendererComponent(Transform node)
+        {
+            return node != null && node.GetComponent<Renderer>() != null;
+        }
+
+        readonly struct RemovalContext
+        {
+            public readonly HashSet<Transform> BonesToRemove;
+            public readonly HashSet<Transform> BonesToKeep;
+            public readonly HashSet<Transform> AllBones;
+
+            public RemovalContext(HashSet<Transform> remove, HashSet<Transform> keep, HashSet<Transform> all)
+            {
+                BonesToRemove = remove ?? new HashSet<Transform>();
+                BonesToKeep = keep ?? new HashSet<Transform>();
+                AllBones = all ?? new HashSet<Transform>();
+            }
         }
     }
 }

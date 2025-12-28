@@ -9,6 +9,49 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
 {
     public static class ParameterAdjustService
     {
+        public static bool RemoveParameter(AnimatorController controller, string parameterName)
+        {
+            if (controller == null || string.IsNullOrEmpty(parameterName))
+            {
+                return false;
+            }
+
+            var parameters = controller.parameters;
+            if (parameters == null || parameters.Length == 0)
+            {
+                return false;
+            }
+
+            bool removedDefinition = false;
+            var newParameters = new List<AnimatorControllerParameter>(parameters.Length);
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                var p = parameters[i];
+                if (p != null && p.name == parameterName)
+                {
+                    removedDefinition = true;
+                    continue;
+                }
+                newParameters.Add(p);
+            }
+
+            if (!removedDefinition)
+            {
+                return false;
+            }
+
+            controller.parameters = newParameters.ToArray();
+
+            TraverseStateMachines(
+                controller,
+                state => RemoveInState(state, parameterName),
+                transition => RemoveInTransition(transition, parameterName),
+                behaviour => RemoveInBehaviour(behaviour, parameterName));
+
+            EditorUtility.SetDirty(controller);
+            return true;
+        }
+
         public static bool RenameParameter(AnimatorController controller, string oldName, string newName)
         {
             if (controller == null || string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName))
@@ -164,6 +207,152 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
                 state => RenameInState(state, oldName, newName),
                 transition => RenameInTransition(transition, oldName, newName),
                 behaviour => RenameInBehaviour(behaviour, oldName, newName));
+        }
+
+        private static void RemoveInState(AnimatorState state, string parameterName)
+        {
+            if (state == null) return;
+
+            bool changed = false;
+            if (!string.IsNullOrEmpty(state.speedParameter) && state.speedParameter == parameterName)
+            {
+                state.speedParameter = string.Empty;
+                changed = true;
+            }
+            if (!string.IsNullOrEmpty(state.mirrorParameter) && state.mirrorParameter == parameterName)
+            {
+                state.mirrorParameter = string.Empty;
+                changed = true;
+            }
+            if (!string.IsNullOrEmpty(state.cycleOffsetParameter) && state.cycleOffsetParameter == parameterName)
+            {
+                state.cycleOffsetParameter = string.Empty;
+                changed = true;
+            }
+            if (!string.IsNullOrEmpty(state.timeParameter) && state.timeParameter == parameterName)
+            {
+                state.timeParameter = string.Empty;
+                changed = true;
+            }
+
+            if (state.motion is UnityEditor.Animations.BlendTree bt)
+            {
+                changed |= RemoveInBlendTree(bt, parameterName);
+            }
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(state);
+            }
+        }
+
+        private static bool RemoveInBlendTree(UnityEditor.Animations.BlendTree bt, string parameterName)
+        {
+            if (bt == null) return false;
+
+            bool changed = false;
+            if (!string.IsNullOrEmpty(bt.blendParameter) && bt.blendParameter == parameterName)
+            {
+                bt.blendParameter = string.Empty;
+                changed = true;
+            }
+            if (!string.IsNullOrEmpty(bt.blendParameterY) && bt.blendParameterY == parameterName)
+            {
+                bt.blendParameterY = string.Empty;
+                changed = true;
+            }
+
+            var children = bt.children;
+            for (int i = 0; i < children.Length; i++)
+            {
+                if (children[i].motion is UnityEditor.Animations.BlendTree childBt)
+                {
+                    changed |= RemoveInBlendTree(childBt, parameterName);
+                }
+
+                if (!string.IsNullOrEmpty(children[i].directBlendParameter) &&
+                    children[i].directBlendParameter == parameterName)
+                {
+                    children[i].directBlendParameter = string.Empty;
+                    children[i].threshold = children[i].threshold;
+                    changed = true;
+                }
+            }
+            bt.children = children;
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(bt);
+            }
+
+            return changed;
+        }
+
+        private static void RemoveInTransition(AnimatorTransitionBase transition, string parameterName)
+        {
+            if (transition == null) return;
+
+            var conditions = transition.conditions;
+            if (conditions == null || conditions.Length == 0)
+            {
+                return;
+            }
+
+            bool changed = false;
+            var newConditions = new List<AnimatorCondition>(conditions.Length);
+            for (int i = 0; i < conditions.Length; i++)
+            {
+                if (conditions[i].parameter == parameterName)
+                {
+                    changed = true;
+                    continue;
+                }
+                newConditions.Add(conditions[i]);
+            }
+
+            if (changed)
+            {
+                transition.conditions = newConditions.ToArray();
+                EditorUtility.SetDirty(transition);
+            }
+        }
+
+        private static void RemoveInBehaviour(StateMachineBehaviour behaviour, string parameterName)
+        {
+            if (behaviour == null) return;
+            if (!behaviour.GetType().Name.Contains("VRCAvatarParameterDriver"))
+            {
+                return;
+            }
+
+            var so = new SerializedObject(behaviour);
+            var parametersProp = so.FindProperty("parameters");
+            if (parametersProp == null)
+            {
+                return;
+            }
+
+            bool changed = false;
+            for (int i = parametersProp.arraySize - 1; i >= 0; i--)
+            {
+                var element = parametersProp.GetArrayElementAtIndex(i);
+                var nameProp = element.FindPropertyRelative("name");
+                var sourceProp = element.FindPropertyRelative("source");
+
+                bool matchesName = nameProp != null && nameProp.stringValue == parameterName;
+                bool matchesSource = sourceProp != null && sourceProp.stringValue == parameterName;
+                if (matchesName || matchesSource)
+                {
+                    parametersProp.DeleteArrayElementAtIndex(i);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(behaviour);
+            }
         }
 
         private static void RenameInState(AnimatorState state, string oldName, string newName)

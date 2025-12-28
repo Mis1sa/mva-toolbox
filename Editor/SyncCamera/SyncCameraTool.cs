@@ -10,7 +10,7 @@ namespace MVA.Toolbox.SyncCamera.Editor
         private const string MenuPath = "Tools/MVA Toolbox/Sync Main Camera to Scene View";
         private const string EditorPrefsKey = "MVA_SyncCamera_Enabled";
 
-        [MenuItem(MenuPath, false, 31)]
+        [MenuItem(MenuPath, false, 32)]
         private static void ToggleSyncCamera()
         {
             bool isEnabled = !IsSyncEnabled();
@@ -103,17 +103,29 @@ namespace MVA.Toolbox.SyncCamera.Editor
         }
     }
 
-    // 运行时将主摄像机对齐到 Scene 视图相机
+    // 运行时将主摄像机对齐到 Scene 视图相机（仅在 Scene 视图绘制时触发，避免无 Scene 窗口时重置）
     public sealed class SyncCameraComponent : MonoBehaviour
     {
-        private void Update()
+        private void OnEnable()
+        {
+            SceneView.duringSceneGui += OnSceneGUI;
+        }
+
+        private void OnDisable()
+        {
+            SceneView.duringSceneGui -= OnSceneGUI;
+        }
+
+        private void OnSceneGUI(SceneView sceneView)
         {
             if (!Application.isPlaying)
                 return;
 
-            var sceneView = SceneView.lastActiveSceneView;
+            if (sceneView == null || sceneView.camera == null)
+                return;
+
             var mainCam = Camera.main;
-            if (sceneView == null || mainCam == null)
+            if (mainCam == null)
                 return;
 
             var sceneTransform = sceneView.camera.transform;

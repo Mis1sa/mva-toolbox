@@ -297,128 +297,17 @@ namespace MVA.Toolbox.QuickRemoveBones
 
         Dictionary<Transform, HashSet<Renderer>> BuildBoneUsage(IEnumerable<Renderer> candidates)
         {
-            var map = new Dictionary<Transform, HashSet<Renderer>>();
-            var visitedRoots = new HashSet<Transform>();
-
-            foreach (var renderer in candidates)
-            {
-                if (renderer == null)
-                {
-                    continue;
-                }
-
-                var root = renderer.transform != null ? renderer.transform.root : null;
-                if (root == null || !visitedRoots.Add(root))
-                {
-                    continue;
-                }
-
-                var skinnedMeshes = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-                foreach (var smr in skinnedMeshes)
-                {
-                    if (smr == null || smr.bones == null || smr.sharedMesh == null)
-                    {
-                        continue;
-                    }
-
-                    var usedIndices = GetUsedBoneIndices(smr.sharedMesh);
-                    if (usedIndices.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    foreach (var boneIndex in usedIndices)
-                    {
-                        if (boneIndex < 0 || boneIndex >= smr.bones.Length)
-                        {
-                            continue;
-                        }
-
-                        var bone = smr.bones[boneIndex];
-                        if (bone == null)
-                        {
-                            continue;
-                        }
-
-                        if (!map.TryGetValue(bone, out var set))
-                        {
-                            set = new HashSet<Renderer>();
-                            map[bone] = set;
-                        }
-
-                        set.Add(smr);
-                    }
-                }
-            }
-
-            return map;
+            return BoneExclusivityUtil.BuildBoneUsage(candidates);
         }
 
         List<Transform> CollectExclusiveBones(Renderer renderer, Dictionary<Transform, HashSet<Renderer>> boneUsage)
         {
-            var bones = new List<Transform>();
-            var smr = renderer as SkinnedMeshRenderer;
-            if (smr == null)
-            {
-                return bones;
-            }
-
-            var allRemoveSet = new HashSet<Renderer>(_removeCandidates);
-            var usedIndices = GetUsedBoneIndices(smr.sharedMesh);
-            foreach (var boneIndex in usedIndices)
-            {
-                if (boneIndex < 0 || boneIndex >= smr.bones.Length)
-                {
-                    continue;
-                }
-
-                var bone = smr.bones[boneIndex];
-                if (bone == null)
-                {
-                    continue;
-                }
-
-                if (!boneUsage.TryGetValue(bone, out var users) || users.Count == 0)
-                {
-                    continue;
-                }
-
-                if (users.All(allRemoveSet.Contains))
-                {
-                    bones.Add(bone);
-                }
-            }
-
-            return bones
-                .Where(b => b != null)
-                .OrderBy(b => b.name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            return BoneExclusivityUtil.CollectExclusiveBones(renderer, boneUsage, _removeCandidates);
         }
 
         static HashSet<int> GetUsedBoneIndices(Mesh mesh)
         {
-            var indices = new HashSet<int>();
-            if (mesh == null)
-            {
-                return indices;
-            }
-
-            var weights = mesh.boneWeights;
-            if (weights == null || weights.Length == 0)
-            {
-                return indices;
-            }
-
-            for (int i = 0; i < weights.Length; i++)
-            {
-                var bw = weights[i];
-                if (bw.weight0 > 0f) indices.Add(bw.boneIndex0);
-                if (bw.weight1 > 0f) indices.Add(bw.boneIndex1);
-                if (bw.weight2 > 0f) indices.Add(bw.boneIndex2);
-                if (bw.weight3 > 0f) indices.Add(bw.boneIndex3);
-            }
-
-            return indices;
+            return BoneExclusivityUtil.GetUsedBoneIndices(mesh);
         }
 
         void ExecuteRemoval()

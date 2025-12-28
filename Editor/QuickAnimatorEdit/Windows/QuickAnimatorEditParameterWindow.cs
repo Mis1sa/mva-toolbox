@@ -24,6 +24,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             Adjust
         }
 
+        public static bool IsMAParametersControllerModeActive { get; private set; }
+
         private const float _adjustFieldLabelWidth = 120f;
 
         private void EnsureAutoBindExpressionParameters()
@@ -113,6 +115,29 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                 {
                     return ParameterAdjustService.SwapParameters(controller, selectedParameter.name, targetParameterName);
                 }, _adjustSwapApplyAll, controllers);
+            }
+        }
+
+        private void DrawAdjustRemoveSection(AnimatorControllerParameter selectedParameter, IReadOnlyList<AnimatorController> controllers)
+        {
+            _adjustRemoveApplyAll = EditorGUILayout.ToggleLeft("覆盖到全部控制器", _adjustRemoveApplyAll);
+
+            if (GUILayout.Button("应用移除", GUILayout.Height(28f)))
+            {
+                bool confirmed = EditorUtility.DisplayDialog(
+                    "移除参数",
+                    $"将从动画控制器中移除参数：{selectedParameter.name}\n\n同时会清理所有相关引用（Transition Conditions / BlendTree / Behaviour 等）。\n\n此操作可通过 Undo 撤销。",
+                    "确定移除",
+                    "取消");
+                if (!confirmed)
+                {
+                    return;
+                }
+
+                ApplyAdjustAction("移除", controller =>
+                {
+                    return ParameterAdjustService.RemoveParameter(controller, selectedParameter.name);
+                }, _adjustRemoveApplyAll, controllers);
             }
         }
 
@@ -236,6 +261,9 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                 case AdjustOperation.Swap:
                     DrawAdjustSwapSection(selectedParameter, parameters, controllers);
                     break;
+                case AdjustOperation.Remove:
+                    DrawAdjustRemoveSection(selectedParameter, controllers);
+                    break;
             }
         }
 
@@ -279,7 +307,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         {
             Rename,
             ChangeType,
-            Swap
+            Swap,
+            Remove
         }
 
         private static readonly string[] _missingReferenceOptions = { "忽略", "置空引用", "替换为已有参数" };
@@ -289,7 +318,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             AnimatorControllerParameterType.Int
         };
         private static readonly string[] _typeOptionLabels = { "Bool", "Float", "Int" };
-        private static readonly string[] _adjustOperationLabels = { "名称", "类型", "替换" };
+        private static readonly string[] _adjustOperationLabels = { "名称", "类型", "替换", "移除" };
 
         // Parameter Adjust
         private int _adjustParameterIndex;
@@ -299,9 +328,12 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private AnimatorControllerParameterType _adjustTypeTargetType = AnimatorControllerParameterType.Float;
         private bool _adjustTypeApplyAll;
         private bool _adjustSwapApplyAll;
+        private bool _adjustRemoveApplyAll;
         private AnimatorController _adjustLastController;
         private string _adjustLastParameterName;
         private AdjustOperation _adjustOperation = AdjustOperation.Rename;
+
+        private AnimatorController _applyLastController;
 
         public QuickAnimatorEditParameterWindow(QuickAnimatorEditContext context)
         {
@@ -346,6 +378,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     _mode = mappedMode;
                 }
             }
+
+            IsMAParametersControllerModeActive = !targetIsControllerAsset && _mode == ParameterMode.Apply;
 
             EditorGUILayout.EndVertical();
 
@@ -632,11 +666,48 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             EditorGUILayout.Space(4f);
 
             // 获取控制器参数
-            var controllerParams = _context.SelectedController.parameters;
+            var selectedController = _context.SelectedController;
+            var controllerParams = selectedController.parameters;
             if (controllerParams == null || controllerParams.Length == 0)
             {
                 EditorGUILayout.HelpBox("当前控制器中没有任何参数。", MessageType.Info);
                 return;
+            }
+
+            if (_applyLastController != selectedController)
+            {
+                _applyLastController = selectedController;
+                _selectAll = false;
+                _parameterSelectFlags.Clear();
+                _parameterTypeOverrides.Clear();
+                _parameterDefaultOverrides.Clear();
+                _parameterSaveFlags.Clear();
+                _parameterSyncFlags.Clear();
+
+                Dictionary<string, (bool saved, bool synced)> maDefaults = null;
+                _context.TryGetMAParameterDefaults(selectedController, out maDefaults);
+
+                for (int i = 0; i < controllerParams.Length; i++)
+                {
+                    var p = controllerParams[i];
+                    if (p == null || string.IsNullOrEmpty(p.name)) continue;
+
+                    if (!_parameterSelectFlags.ContainsKey(p.name))
+                    {
+                        _parameterSelectFlags[p.name] = false;
+                    }
+
+                    if (maDefaults != null && maDefaults.TryGetValue(p.name, out var d))
+                    {
+                        _parameterSaveFlags[p.name] = d.saved;
+                        _parameterSyncFlags[p.name] = d.synced;
+                    }
+                    else
+                    {
+                        _parameterSaveFlags[p.name] = false;
+                        _parameterSyncFlags[p.name] = false;
+                    }
+                }
             }
 
             // 通用选项（对齐原脚本）

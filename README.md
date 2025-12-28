@@ -9,17 +9,20 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时�
 
 - **Quick Animator Edit**
   - 状态模式：提供状态拆分、手动 Transition 调整、状态合并流程。
-  - 过渡模式：批量创建或修改 Transition、条件、Exit Time 与默认过渡。
-  - 参数模式：批量扫描 / 添加 / 检查 / 调整参数，支持 Avatar / Animator 资产与 FX 默认选择。
+  - 过渡模式：批量创建或修改 Transition、条件、Exit Time 与默认过渡，支持条件增减。
+  - 参数模式：批量扫描 / 添加 / 检查 / 调整参数，支持 Avatar / Animator 资产与 FX 默认选择，支持 MA Parameters 组件参数直接添加到 Parameters，并提供参数移除操作。
   - BlendTree 模式：快速定位状态下的 BlendTree，并支持移动、导出、创建父级等操作。
 
 - **AnimFix Utility**
-  - **查找动画**：按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip。
+  - **查找动画**：按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip，支持精确 Blendshape 查询，支持 MA Merge Animator。
   - **烘培默认值**：将 Avatar 当前默认姿态烘焙为 AnimationClip，用于在切换控制器或合并状态机前保存默认状态。
   - **动画重定向**：辅助修复动画缺失属性和追踪 Animator 曲线并批量重定向层级、组件与 BlendShape 变动导致的路径。
 
 - **Sync Main Camera to Scene View**
-  - 在播放模式下，将主摄像机的位置和旋转对齐到 Scene 视图相机
+  - 在播放模式下，将主摄像机的位置和旋转对齐到 Scene 视图相机（无 Scene 视图时不再重置到原点）
+
+- **Bone Active Sync**
+  - 录制/编辑时同步网格与独占骨骼的启用状态，可选写入/移除动画属性，支持最小化父级容器策略与独占骨骼模式。
 
 - **Material Refit**
   - 批量替换材质属性，如从旧着色器迁移到新着色器时，将常用属性重新映射到新材质上，减少手工逐个材质调整的工作量。

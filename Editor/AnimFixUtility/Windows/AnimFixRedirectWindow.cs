@@ -230,7 +230,31 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
                 EditorGUILayout.HelpBox($"层级结构已被修改。路径变动/删除：{pathChangeCount} 组，组件变更：{componentChangeCount} 条，缺失绑定（待处理）：{activeMissingCount} 条，标记移除：{removalOnlyCount} 条。", MessageType.Warning);
             }
 
+            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField($"追踪中... 总变动/缺失量: {totalChanges}", EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+
+            bool canAutoMatch = _service.MissingGroups.Any(g =>
+                g != null &&
+                !g.OwnerDeleted &&
+                !g.IsEmpty &&
+                g.FixTarget == null &&
+                !(_service.IgnoreAllMissing && g.FixTarget == null));
+
+            GUI.enabled = canAutoMatch;
+            if (GUILayout.Button("自动匹配", GUILayout.Width(100f)))
+            {
+                var (matched, ambiguous, invalid) = _service.AutoMatchMissingFixTargets();
+                GUI.enabled = true;
+                EditorUtility.DisplayDialog(
+                    "自动匹配完成",
+                    $"成功匹配：{matched}\n跳过（重名/不唯一）：{ambiguous}\n跳过（组件不满足）：{invalid}",
+                    "确定");
+                _repaint?.Invoke();
+            }
+            GUI.enabled = true;
+
+            EditorGUILayout.EndHorizontal();
 
             DrawMissingBindingsContent();
             DrawPathChangesContent();

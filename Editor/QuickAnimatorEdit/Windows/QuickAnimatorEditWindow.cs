@@ -67,6 +67,13 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
 
             _context.DrawTargetSelectionUI();
 
+            bool enableMAParametersControllers = false;
+            if (_currentTab == Tab.Parameter)
+            {
+                enableMAParametersControllers = QuickAnimatorEditParameterWindow.IsMAParametersControllerModeActive;
+            }
+            _context.SetIncludeMAParametersControllers(enableMAParametersControllers);
+
             if (_context.Controllers.Count > 0)
             {
                 EditorGUILayout.Space(4f);

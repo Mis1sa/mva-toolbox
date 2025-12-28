@@ -26,11 +26,15 @@ namespace MVA.Toolbox.AnimFixUtility.Services
         private readonly List<FoundClipInfo> _foundClips = new();
 
         private int _selectedGroupIndex;
+        private int _selectedBlendshapeOptionIndex;
         private bool _searchCompleted;
 
         private GameObject _lastTargetRoot;
         private int _lastControllerIndex = -1;
         private int _lastLayerIndex = -2;
+
+        private readonly List<string> _currentBlendshapeOptions = new();
+        private bool _hasBlendshapeGroups;
 
         public AnimFixFindService(AnimFixUtilityContext context)
         {
@@ -41,9 +45,17 @@ namespace MVA.Toolbox.AnimFixUtility.Services
         public IReadOnlyList<PropertyGroupData> PropertyGroups => _availableGroups;
         public IReadOnlyList<FoundClipInfo> FoundClips => _foundClips;
         public int SelectedGroupIndex => _selectedGroupIndex;
+        public int SelectedBlendshapeOptionIndex => _selectedBlendshapeOptionIndex;
         public bool SearchCompleted => _searchCompleted;
         public bool HasAvailableGroups => _availableGroups.Count > 0;
         public bool HasAnimatedObject => _selectedAnimatedObject != null;
+        public bool SelectedGroupIsBlendshape =>
+            _selectedGroupIndex > 0 &&
+            _selectedGroupIndex <= _availableGroups.Count &&
+            _availableGroups[_selectedGroupIndex - 1].ComponentType == typeof(SkinnedMeshRenderer) &&
+            string.Equals(_availableGroups[_selectedGroupIndex - 1].CanonicalPropertyName, "blendShape", StringComparison.Ordinal);
+        public bool HasBlendshapeGroups => _hasBlendshapeGroups;
+        public IReadOnlyList<string> CurrentBlendshapeOptions => _currentBlendshapeOptions;
 
         public void SyncContextChanges()
         {
@@ -83,6 +95,7 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             _selectedPath = null;
             _availableGroups.Clear();
             _selectedGroupIndex = 0;
+            _selectedBlendshapeOptionIndex = 0;
             _searchCompleted = false;
             _foundClips.Clear();
 
@@ -101,6 +114,20 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                 return;
 
             _selectedGroupIndex = newIndex;
+            _selectedBlendshapeOptionIndex = 0;
+            RebuildBlendshapeOptionsForSelectedGroup();
+            _searchCompleted = false;
+            _foundClips.Clear();
+            FindClipsForSelectedGroup();
+        }
+
+        public void ChangeBlendshapeOptionIndex(int newIndex)
+        {
+            newIndex = Mathf.Clamp(newIndex, 0, _currentBlendshapeOptions.Count > 0 ? _currentBlendshapeOptions.Count - 1 : 0);
+            if (newIndex == _selectedBlendshapeOptionIndex)
+                return;
+
+            _selectedBlendshapeOptionIndex = newIndex;
             _searchCompleted = false;
             _foundClips.Clear();
             FindClipsForSelectedGroup();
@@ -288,8 +315,10 @@ namespace MVA.Toolbox.AnimFixUtility.Services
         {
             _availableGroups.Clear();
             _selectedGroupIndex = 0;
+            _selectedBlendshapeOptionIndex = 0;
             _searchCompleted = false;
             _foundClips.Clear();
+            _hasBlendshapeGroups = false;
 
             if (_selectedAnimatedObject == null || _context.TargetRoot == null)
                 return;
@@ -369,11 +398,50 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             _availableGroups.Sort((a, b) =>
                 string.Compare(a.GroupDisplayName, b.GroupDisplayName, StringComparison.Ordinal));
 
+            _hasBlendshapeGroups = _availableGroups.Any(g =>
+                g.ComponentType == typeof(SkinnedMeshRenderer) &&
+                string.Equals(g.CanonicalPropertyName, "blendShape", StringComparison.Ordinal));
+
             if (_availableGroups.Count > 0)
             {
                 _selectedGroupIndex = 0;
+                _selectedBlendshapeOptionIndex = 0;
+                _currentBlendshapeOptions.Clear();
                 FindClipsForSelectedGroup();
             }
+        }
+
+        private void RebuildBlendshapeOptionsForSelectedGroup()
+        {
+            _currentBlendshapeOptions.Clear();
+
+            if (!SelectedGroupIsBlendshape)
+            {
+                _selectedBlendshapeOptionIndex = 0;
+                return;
+            }
+
+            var group = _availableGroups[_selectedGroupIndex - 1];
+            // 收集该分组下已绑定的 BlendShape 名称（去重，去前缀）
+            var names = new HashSet<string>();
+            foreach (var prop in group.BoundPropertyNames)
+            {
+                if (string.IsNullOrEmpty(prop)) continue;
+                const string prefix = "blendShape.";
+                if (!prop.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                var name = prop.Substring(prefix.Length);
+                if (!string.IsNullOrEmpty(name))
+                {
+                    names.Add(name);
+                }
+            }
+
+            _currentBlendshapeOptions.Add("全部");
+            if (names.Count > 0)
+            {
+                _currentBlendshapeOptions.AddRange(names.OrderBy(n => n));
+            }
+            _selectedBlendshapeOptionIndex = 0;
         }
 
         private void FindClipsForSelectedGroup()
@@ -397,6 +465,23 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             }
 
             var usedClips = new HashSet<AnimationClip>();
+            HashSet<string> allowedProperties = null;
+            bool filterBlendshape = false;
+            if (group != null &&
+                group.ComponentType == typeof(SkinnedMeshRenderer) &&
+                string.Equals(group.CanonicalPropertyName, "blendShape", StringComparison.Ordinal))
+            {
+                if (_selectedBlendshapeOptionIndex > 0 &&
+                    _selectedBlendshapeOptionIndex < _currentBlendshapeOptions.Count)
+                {
+                    var selected = _currentBlendshapeOptions[_selectedBlendshapeOptionIndex];
+                    if (!string.IsNullOrEmpty(selected))
+                    {
+                        allowedProperties = new HashSet<string> { "blendShape." + selected };
+                        filterBlendshape = true;
+                    }
+                }
+            }
 
             ForEachLayerInScope((controller, layer) =>
             {
@@ -422,10 +507,21 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                             break;
                         }
 
-                        if (binding.type == group.ComponentType && group.BoundPropertyNames.Contains(binding.propertyName))
+                        if (binding.type == group.ComponentType)
                         {
-                            hasMatch = true;
-                            break;
+                            if (filterBlendshape)
+                            {
+                                if (allowedProperties != null && allowedProperties.Contains(binding.propertyName))
+                                {
+                                    hasMatch = true;
+                                    break;
+                                }
+                            }
+                            else if (group.BoundPropertyNames.Contains(binding.propertyName))
+                            {
+                                hasMatch = true;
+                                break;
+                            }
                         }
                     }
 

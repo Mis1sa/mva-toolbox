@@ -1,7 +1,11 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using Object = UnityEngine.Object;
 using VRC.SDK3.Avatars.Components;
 using MVA.Toolbox.Public;
 
@@ -23,6 +27,11 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Shared
         // 控制器列表与显示名
         private readonly List<AnimatorController> _controllers = new List<AnimatorController>();
         private readonly List<string> _controllerNames = new List<string>();
+
+        private readonly Dictionary<AnimatorController, Dictionary<string, (bool saved, bool synced)>> _maParameterDefaults
+            = new Dictionary<AnimatorController, Dictionary<string, (bool saved, bool synced)>>();
+
+        private bool _includeMAParametersControllers;
 
         // 选中索引
         private int _selectedControllerIndex;
@@ -63,6 +72,11 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Shared
             }
         }
 
+        public bool TryGetMAParameterDefaults(AnimatorController controller, out Dictionary<string, (bool saved, bool synced)> defaults)
+        {
+            return _maParameterDefaults.TryGetValue(controller, out defaults);
+        }
+
         public AnimatorControllerLayer SelectedLayer
         {
             get
@@ -86,6 +100,17 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Shared
         {
             _targetObject = target;
             RefreshComponents();
+            RefreshControllers();
+        }
+
+        public void SetIncludeMAParametersControllers(bool enabled)
+        {
+            if (_includeMAParametersControllers == enabled)
+            {
+                return;
+            }
+
+            _includeMAParametersControllers = enabled;
             RefreshControllers();
         }
 
@@ -192,6 +217,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Shared
         {
             _controllers.Clear();
             _controllerNames.Clear();
+            _maParameterDefaults.Clear();
             _selectedControllerIndex = 0;
             _selectedLayerIndex = 0;
 
@@ -210,6 +236,12 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Shared
             if (_targetObject is GameObject root)
             {
                 _controllers.AddRange(ToolboxUtils.CollectControllersFromRoot(root, includeSpecialLayers: true));
+
+                if (_includeMAParametersControllers)
+                {
+                    AppendMAParametersControllers(root);
+                }
+
                 if (_controllers.Count > 0)
                 {
                     _controllerNames.AddRange(ToolboxUtils.BuildControllerDisplayNames(_avatarDescriptor, _animator, _controllers));
@@ -228,6 +260,218 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Shared
                         }
                     }
                 }
+            }
+        }
+
+        private void AppendMAParametersControllers(GameObject root)
+        {
+            if (root == null) return;
+
+            Type maParamsType = null;
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < assemblies.Length && maParamsType == null; i++)
+            {
+                var asm = assemblies[i];
+                if (asm == null) continue;
+                maParamsType = asm.GetType("nadena.dev.modular_avatar.core.ModularAvatarParameters");
+            }
+            if (maParamsType == null) return;
+
+            var comps = root.GetComponentsInChildren<Component>(true);
+            if (comps == null || comps.Length == 0) return;
+
+            var maComponents = new List<Component>();
+            for (int i = 0; i < comps.Length; i++)
+            {
+                var c = comps[i];
+                if (c == null) continue;
+                if (c.GetType() == maParamsType)
+                {
+                    maComponents.Add(c);
+                }
+            }
+
+            if (maComponents.Count == 0) return;
+
+            var parametersField = maParamsType.GetField("parameters", BindingFlags.Public | BindingFlags.Instance);
+            if (parametersField == null) return;
+
+            for (int i = 0; i < maComponents.Count; i++)
+            {
+                var component = maComponents[i];
+                if (component == null) continue;
+
+                if (!TryBuildMAParametersController(component, parametersField, i + 1, out var controller, out var defaults))
+                {
+                    continue;
+                }
+
+                if (controller == null) continue;
+
+                _controllers.Add(controller);
+                if (defaults != null)
+                {
+                    _maParameterDefaults[controller] = defaults;
+                }
+            }
+        }
+
+        private static bool TryBuildMAParametersController(
+            Component component,
+            FieldInfo parametersField,
+            int index,
+            out AnimatorController controller,
+            out Dictionary<string, (bool saved, bool synced)> defaults)
+        {
+            controller = null;
+            defaults = null;
+
+            if (component == null || parametersField == null) return false;
+
+            object listObj;
+            try
+            {
+                listObj = parametersField.GetValue(component);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (listObj is not System.Collections.IEnumerable enumerable)
+            {
+                return false;
+            }
+
+            var name = component.gameObject != null ? component.gameObject.name : "(GameObject)";
+            controller = new AnimatorController
+            {
+                name = $"[MA Parameters] {name}[{index}]"
+            };
+
+            defaults = new Dictionary<string, (bool saved, bool synced)>();
+
+            foreach (var entry in enumerable)
+            {
+                if (entry == null) continue;
+                var entryType = entry.GetType();
+
+                string nameOrPrefix = GetFieldString(entry, entryType, "nameOrPrefix");
+                if (string.IsNullOrEmpty(nameOrPrefix)) continue;
+
+                bool isPrefix = GetFieldBool(entry, entryType, "isPrefix");
+                if (isPrefix) continue;
+
+                bool internalParameter = GetFieldBool(entry, entryType, "internalParameter");
+                if (internalParameter) continue;
+
+                string remapTo = GetFieldString(entry, entryType, "remapTo");
+                string finalName = !string.IsNullOrEmpty(remapTo) ? remapTo : nameOrPrefix;
+                if (string.IsNullOrEmpty(finalName)) continue;
+
+                float defaultValue = GetFieldFloat(entry, entryType, "defaultValue");
+                bool saved = GetFieldBool(entry, entryType, "saved");
+                bool localOnly = GetFieldBool(entry, entryType, "localOnly");
+                bool synced = !localOnly;
+
+                int syncTypeValue = GetFieldInt(entry, entryType, "syncType");
+                var paramType = AnimatorControllerParameterType.Float;
+                if (syncTypeValue == 3) paramType = AnimatorControllerParameterType.Bool;
+                else if (syncTypeValue == 1) paramType = AnimatorControllerParameterType.Int;
+                else if (syncTypeValue == 2) paramType = AnimatorControllerParameterType.Float;
+                else
+                {
+                    // NotSynced
+                    paramType = AnimatorControllerParameterType.Float;
+                    synced = false;
+                }
+
+                if (controller.parameters.Any(p => p != null && p.name == finalName))
+                {
+                    continue;
+                }
+
+                var p = new AnimatorControllerParameter
+                {
+                    name = finalName,
+                    type = paramType
+                };
+
+                switch (paramType)
+                {
+                    case AnimatorControllerParameterType.Bool:
+                        p.defaultBool = defaultValue >= 0.5f;
+                        break;
+                    case AnimatorControllerParameterType.Int:
+                        p.defaultInt = Mathf.RoundToInt(defaultValue);
+                        break;
+                    default:
+                        p.defaultFloat = defaultValue;
+                        break;
+                }
+
+                controller.AddParameter(p);
+                defaults[finalName] = (saved, synced);
+            }
+
+            return true;
+        }
+
+        private static string GetFieldString(object obj, Type type, string fieldName)
+        {
+            try
+            {
+                var f = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                return f != null ? f.GetValue(obj) as string : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool GetFieldBool(object obj, Type type, string fieldName)
+        {
+            try
+            {
+                var f = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                return f != null && f.GetValue(obj) is bool b && b;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static float GetFieldFloat(object obj, Type type, string fieldName)
+        {
+            try
+            {
+                var f = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (f == null) return 0f;
+                var v = f.GetValue(obj);
+                return v is float fv ? fv : 0f;
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
+        private static int GetFieldInt(object obj, Type type, string fieldName)
+        {
+            try
+            {
+                var f = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (f == null) return 0;
+                var v = f.GetValue(obj);
+                if (v is int iv) return iv;
+                if (v is Enum ev) return Convert.ToInt32(ev);
+                return 0;
+            }
+            catch
+            {
+                return 0;
             }
         }
 

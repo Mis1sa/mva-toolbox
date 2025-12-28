@@ -36,13 +36,118 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
             public bool IsObjectReference => ObjectRefKeyframes != null && ObjectRefKeyframes.Length > 0;
         }
 
+        public (int matchedCount, int skippedAmbiguous, int skippedInvalid) AutoMatchMissingFixTargets()
+        {
+            if (!HasSnapshot || _targetRoot == null)
+            {
+                return (0, 0, 0);
+            }
+
+            CalculateCurrentPaths();
+
+            var nameToObjects = new Dictionary<string, List<GameObject>>(StringComparer.OrdinalIgnoreCase);
+            var allTransforms = _targetRoot.GetComponentsInChildren<Transform>(true);
+            foreach (var t in allTransforms)
+            {
+                if (t == null) continue;
+                var go = t.gameObject;
+                if (go == null) continue;
+
+                var name = go.name ?? string.Empty;
+                if (!nameToObjects.TryGetValue(name, out var list))
+                {
+                    list = new List<GameObject>();
+                    nameToObjects.Add(name, list);
+                }
+                list.Add(go);
+            }
+
+            int matched = 0;
+            int ambiguous = 0;
+            int invalid = 0;
+
+            foreach (var group in _missingGroups)
+            {
+                if (group == null) continue;
+                if (group.OwnerDeleted) continue;
+                if (group.IsEmpty) continue;
+                if (_ignoreAllMissing && group.FixTarget == null) continue;
+
+                // 不覆盖用户已手动指定的修复目标
+                if (group.FixTarget != null) continue;
+
+                string expectedName = GetObjectNameFromPath(group.OldPath);
+                if (string.IsNullOrEmpty(expectedName))
+                {
+                    continue;
+                }
+
+                // 根物体不参与自动匹配（避免误把 FixTarget 指向根）
+                if (string.Equals(expectedName, "根物体 (Root)", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!nameToObjects.TryGetValue(expectedName, out var candidates) || candidates == null || candidates.Count == 0)
+                {
+                    continue;
+                }
+
+                if (candidates.Count != 1)
+                {
+                    ambiguous++;
+                    continue;
+                }
+
+                var candidate = candidates[0];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                var requiredTypes = group.RequiredTypes;
+                if (requiredTypes != null && requiredTypes.Count > 0)
+                {
+                    bool ok = true;
+                    for (int i = 0; i < requiredTypes.Count; i++)
+                    {
+                        var type = requiredTypes[i];
+                        if (type == null) continue;
+
+                        if (type == typeof(GameObject) || type == typeof(Transform))
+                        {
+                            continue;
+                        }
+
+                        if (candidate.GetComponent(type) == null)
+                        {
+                            ok = false;
+                            break;
+                        }
+                    }
+
+                    if (!ok)
+                    {
+                        invalid++;
+                        continue;
+                    }
+                }
+
+                group.FixTarget = candidate;
+                UpdateFixTargetStatus(group);
+                matched++;
+            }
+
+            return (matched, ambiguous, invalid);
+        }
+
         // 按物体路径聚合的缺失绑定组
         internal sealed class MissingObjectGroup
         {
             public string OldPath;
             public UnityEngine.Object FixTarget;
             public readonly Dictionary<Type, List<MissingCurveEntry>> CurvesByType = new Dictionary<Type, List<MissingCurveEntry>>();
-            public bool IsExpanded = true;
+            public bool IsExpanded = false;
 
             public bool OwnerExistedAtSnapshot;
 
@@ -752,6 +857,17 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
             }
 
             return propertyName;
+        }
+
+        static string GetObjectNameFromPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return "根物体 (Root)";
+            }
+
+            var parts = path.Split('/');
+            return parts.Length > 0 ? parts[parts.Length - 1] : path;
         }
 
         List<AnimationClip> GetClipsToProcess(AnimatorController controller, int layerIndex)

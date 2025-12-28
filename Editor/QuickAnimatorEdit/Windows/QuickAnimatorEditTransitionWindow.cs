@@ -20,6 +20,216 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             Modify
         }
 
+        private class ConditionDeltaSettingUI
+        {
+            public enum ConditionOp
+            {
+                Append,
+                AddUnique,
+                Remove
+            }
+
+            public string parameterName;
+            public AnimatorConditionMode mode;
+            public float threshold;
+            public bool removeAllForParameter;
+            public ConditionOp operation = ConditionOp.Append;
+            public bool ignoreCondition = true;
+            public bool requestRemove;
+
+            private int _selectedParameterIndex;
+
+            private static readonly string[] OpLabels = { "追加", "增加(去重)", "移除" };
+            private static readonly string[] BoolModes = { "True", "False" };
+            private static readonly string[] BoolModesWithAll = { "True", "False", "全部" };
+            private static readonly string[] FloatModes = { "Greater", "Less" };
+            private static readonly string[] FloatModesWithAll = { "Greater", "Less", "全部" };
+            private static readonly string[] IntModes = { "Greater", "Less", "Equals", "NotEquals" };
+            private static readonly string[] IntModesWithAll = { "Greater", "Less", "Equals", "NotEquals", "全部" };
+
+            public void Draw(AnimatorController controller)
+            {
+                var parameters = controller.parameters;
+                var availableNames = new List<string>();
+                foreach (var p in parameters)
+                {
+                    if (p != null && p.type != AnimatorControllerParameterType.Trigger)
+                    {
+                        availableNames.Add(p.name);
+                    }
+                }
+
+                if (availableNames.Count == 0)
+                {
+                    EditorGUILayout.HelpBox("未找到非 Trigger 类型的参数。", MessageType.Info);
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(parameterName))
+                {
+                    parameterName = availableNames[0];
+                }
+
+                int currentIndex = availableNames.IndexOf(parameterName);
+                if (currentIndex >= 0)
+                {
+                    _selectedParameterIndex = currentIndex;
+                }
+
+                EditorGUILayout.BeginHorizontal();
+
+                int newIndex = EditorGUILayout.Popup(_selectedParameterIndex, availableNames.ToArray(), GUILayout.Width(150f));
+                if (newIndex != _selectedParameterIndex && newIndex >= 0 && newIndex < availableNames.Count)
+                {
+                    _selectedParameterIndex = newIndex;
+                    parameterName = availableNames[_selectedParameterIndex];
+                    removeAllForParameter = false;
+                }
+
+                AnimatorControllerParameter selectedParam = null;
+                foreach (var p in parameters)
+                {
+                    if (p != null && p.name == parameterName)
+                    {
+                        selectedParam = p;
+                        break;
+                    }
+                }
+
+                int opIndex = operation == ConditionOp.AddUnique ? 1 : operation == ConditionOp.Remove ? 2 : 0;
+                int newOpIndex = EditorGUILayout.Popup(opIndex, OpLabels, GUILayout.Width(100f));
+                var newOp = newOpIndex == 1 ? ConditionOp.AddUnique : newOpIndex == 2 ? ConditionOp.Remove : ConditionOp.Append;
+                if (newOp != operation)
+                {
+                    operation = newOp;
+                    removeAllForParameter = false;
+                }
+
+                if (operation == ConditionOp.AddUnique)
+                {
+                    ignoreCondition = EditorGUILayout.ToggleLeft("忽略条件", ignoreCondition, GUILayout.Width(90f));
+                }
+
+                if (selectedParam != null)
+                {
+                    switch (selectedParam.type)
+                    {
+                        case AnimatorControllerParameterType.Bool:
+                        {
+                            bool includeAll = operation == ConditionOp.Remove;
+                            var labels = includeAll ? BoolModesWithAll : BoolModes;
+                            int modeIndex;
+
+                            if (includeAll && removeAllForParameter)
+                            {
+                                modeIndex = labels.Length - 1;
+                            }
+                            else
+                            {
+                                modeIndex = mode == AnimatorConditionMode.If ? 0 : 1;
+                            }
+
+                            int newModeIndex = EditorGUILayout.Popup(modeIndex, labels, GUILayout.Width(80f));
+                            if (includeAll && newModeIndex == labels.Length - 1)
+                            {
+                                removeAllForParameter = true;
+                                mode = AnimatorConditionMode.If;
+                            }
+                            else
+                            {
+                                removeAllForParameter = false;
+                                mode = newModeIndex == 0 ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
+                            }
+
+                            float valueFieldWidth = 60f;
+                            GUILayout.Label(string.Empty, GUILayout.Width(valueFieldWidth));
+                            break;
+                        }
+                        case AnimatorControllerParameterType.Float:
+                        {
+                            bool includeAll = operation == ConditionOp.Remove;
+                            var labels = includeAll ? FloatModesWithAll : FloatModes;
+                            int modeIndex;
+
+                            if (includeAll && removeAllForParameter)
+                            {
+                                modeIndex = labels.Length - 1;
+                            }
+                            else
+                            {
+                                modeIndex = mode == AnimatorConditionMode.Less ? 1 : 0;
+                            }
+
+                            int newModeIndex = EditorGUILayout.Popup(modeIndex, labels, GUILayout.Width(80f));
+                            if (includeAll && newModeIndex == labels.Length - 1)
+                            {
+                                removeAllForParameter = true;
+                                mode = AnimatorConditionMode.Greater;
+                            }
+                            else
+                            {
+                                removeAllForParameter = false;
+                                mode = newModeIndex == 0 ? AnimatorConditionMode.Greater : AnimatorConditionMode.Less;
+                            }
+
+                            threshold = EditorGUILayout.FloatField(threshold, GUILayout.Width(60f));
+                            break;
+                        }
+                        case AnimatorControllerParameterType.Int:
+                        {
+                            bool includeAll = operation == ConditionOp.Remove;
+                            var labels = includeAll ? IntModesWithAll : IntModes;
+                            int modeIndex;
+
+                            if (includeAll && removeAllForParameter)
+                            {
+                                modeIndex = labels.Length - 1;
+                            }
+                            else
+                            {
+                                modeIndex = 0;
+                                if (mode == AnimatorConditionMode.Less) modeIndex = 1;
+                                else if (mode == AnimatorConditionMode.Equals) modeIndex = 2;
+                                else if (mode == AnimatorConditionMode.NotEqual) modeIndex = 3;
+                            }
+
+                            int newModeIndex = EditorGUILayout.Popup(modeIndex, labels, GUILayout.Width(80f));
+                            if (includeAll && newModeIndex == labels.Length - 1)
+                            {
+                                removeAllForParameter = true;
+                                mode = AnimatorConditionMode.Greater;
+                            }
+                            else
+                            {
+                                removeAllForParameter = false;
+                                switch (newModeIndex)
+                                {
+                                    case 0: mode = AnimatorConditionMode.Greater; break;
+                                    case 1: mode = AnimatorConditionMode.Less; break;
+                                    case 2: mode = AnimatorConditionMode.Equals; break;
+                                    case 3: mode = AnimatorConditionMode.NotEqual; break;
+                                }
+                            }
+
+                            int newThreshold = EditorGUILayout.IntField((int)threshold, GUILayout.Width(60f));
+                            if (newThreshold < 0) newThreshold = 0;
+                            threshold = newThreshold;
+                            break;
+                        }
+                    }
+                }
+
+                GUILayout.FlexibleSpace();
+                float removeButtonSize = EditorGUIUtility.singleLineHeight;
+                if (GUILayout.Button("-", GUILayout.Width(removeButtonSize), GUILayout.Height(removeButtonSize)))
+                {
+                    requestRemove = true;
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
         private TransitionMode _mode = TransitionMode.Create;
         private QuickAnimatorEditContext _context;
 
@@ -57,6 +267,14 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         // Modify Mode
         private TransitionModifyService.ModifyMode _modifyMode = TransitionModifyService.ModifyMode.FromStateTransitions;
         private int _modifyStateIndex = 0;
+
+        private enum ModifyActionMode
+        {
+            ModifyTransitions,
+            ConditionDelta
+        }
+
+        private ModifyActionMode _modifyActionMode = ModifyActionMode.ModifyTransitions;
         
         private bool _modifyHasExitTimeValue = true;
         private float _modifyExitTimeValue = 0.75f;
@@ -66,6 +284,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         
         private bool _modifyConditions = false;
         private List<ModifyConditionSettingUI> _modifyConditionSettings = new List<ModifyConditionSettingUI>();
+
+        private List<ConditionDeltaSettingUI> _conditionDeltaSettings = new List<ConditionDeltaSettingUI>();
 
         public QuickAnimatorEditTransitionWindow(QuickAnimatorEditContext context)
         {
@@ -1191,18 +1411,28 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             DrawModifyModeSelection();
             EditorGUILayout.Space(4f);
 
-            // 过渡属性区域
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("过渡属性", EditorStyles.boldLabel);
-            DrawModifyProperties();
-            EditorGUILayout.EndVertical();
+            if (_modifyActionMode == ModifyActionMode.ModifyTransitions)
+            {
+                // 过渡属性区域
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField("过渡属性", EditorStyles.boldLabel);
+                DrawModifyProperties();
+                EditorGUILayout.EndVertical();
 
-            EditorGUILayout.Space(4f);
+                EditorGUILayout.Space(4f);
 
-            // 条件设置区域
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            DrawModifyConditions();
-            EditorGUILayout.EndVertical();
+                // 条件设置区域
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                DrawModifyConditions();
+                EditorGUILayout.EndVertical();
+            }
+            else
+            {
+                // 条件增减区域（无过渡属性）
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                DrawConditionDeltaUI();
+                EditorGUILayout.EndVertical();
+            }
 
             EditorGUILayout.Space(8f);
             if (GUILayout.Button("应用更改", GUILayout.Height(32f)))
@@ -1213,31 +1443,89 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
 
         private void DrawModifyModeSelection()
         {
-            // 修改模式（由选择的状态出发 / 到达选择的状态）
+            // 修改模式
+            var actionModeOptions = new[] { "修改过渡", "增减Conditions" };
+            int actionModeIndex = (int)_modifyActionMode;
+            actionModeIndex = EditorGUILayout.Popup("修改模式", actionModeIndex, actionModeOptions);
+            _modifyActionMode = (ModifyActionMode)actionModeIndex;
+
+            // 过渡选择（由选择的状态出发 / 到达选择的状态）
             var modifyModeOptions = new[] { "由选择的状态出发", "到达选择的状态" };
             int modeIndex = (int)_modifyMode;
-            modeIndex = EditorGUILayout.Popup("修改模式", modeIndex, modifyModeOptions);
+            modeIndex = EditorGUILayout.Popup("过渡选择", modeIndex, modifyModeOptions);
             _modifyMode = (TransitionModifyService.ModifyMode)modeIndex;
 
-            // 目标状态选择 - 使用 displayPath
-            var options = new List<string>();
-
-            if (_modifyMode == TransitionModifyService.ModifyMode.FromStateTransitions)
-            {
-                options.Add("Any State");
-            }
-            
-            options.AddRange(_displayPaths);
-
-            if (_modifyMode == TransitionModifyService.ModifyMode.ToStateTransitions)
-            {
-                options.Add("Exit");
-            }
-
+            var options = BuildModifyTargetStateOptions(_modifyMode);
             if (options.Count == 0) return;
 
             _modifyStateIndex = Mathf.Clamp(_modifyStateIndex, 0, options.Count - 1);
             _modifyStateIndex = EditorGUILayout.Popup("目标状态", _modifyStateIndex, options.ToArray());
+        }
+
+        private List<string> BuildModifyTargetStateOptions(TransitionModifyService.ModifyMode modifyMode)
+        {
+            var options = new List<string>();
+
+            if (modifyMode == TransitionModifyService.ModifyMode.FromStateTransitions)
+            {
+                options.Add("Any State");
+            }
+
+            options.AddRange(_displayPaths);
+
+            if (modifyMode == TransitionModifyService.ModifyMode.ToStateTransitions)
+            {
+                options.Add("Exit");
+            }
+
+            return options;
+        }
+
+        private string ResolveTargetStatePath(string selectedDisplayPath)
+        {
+            string targetStatePath = selectedDisplayPath;
+            if (selectedDisplayPath != "Any State" && selectedDisplayPath != "Exit")
+            {
+                targetStatePath = _displayToActualPath.TryGetValue(selectedDisplayPath, out var actualPath) ? actualPath : selectedDisplayPath;
+            }
+
+            return targetStatePath;
+        }
+
+        private void DrawConditionDeltaUI()
+        {
+            EditorGUILayout.LabelField("条件设置", EditorStyles.boldLabel);
+            EditorGUILayout.Space(4f);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("添加条件", GUILayout.Width(120f)))
+            {
+                _conditionDeltaSettings.Add(new ConditionDeltaSettingUI());
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4f);
+
+            for (int i = _conditionDeltaSettings.Count - 1; i >= 0; i--)
+            {
+                var setting = _conditionDeltaSettings[i];
+                if (setting == null)
+                {
+                    continue;
+                }
+
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                setting.Draw(_context.SelectedController);
+                EditorGUILayout.EndVertical();
+                EditorGUILayout.Space(5f);
+
+                if (setting.requestRemove)
+                {
+                    _conditionDeltaSettings.RemoveAt(i);
+                }
+            }
         }
 
         private void DrawModifyProperties()
@@ -1312,51 +1600,68 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
 
         private void ApplyModify()
         {
-            var options = new List<string>();
-
-            if (_modifyMode == TransitionModifyService.ModifyMode.FromStateTransitions) options.Add("Any State");
-            options.AddRange(_displayPaths);
-            if (_modifyMode == TransitionModifyService.ModifyMode.ToStateTransitions) options.Add("Exit");
+            var options = BuildModifyTargetStateOptions(_modifyMode);
 
             if (_modifyStateIndex < 0 || _modifyStateIndex >= options.Count) return;
             string selectedDisplayPath = options[_modifyStateIndex];
 
-            // 将 displayPath 转换为 actualPath
-            string targetStatePath = selectedDisplayPath;
-            if (selectedDisplayPath != "Any State" && selectedDisplayPath != "Exit")
+            string targetStatePath = ResolveTargetStatePath(selectedDisplayPath);
+
+            if (_modifyActionMode == ModifyActionMode.ModifyTransitions)
             {
-                targetStatePath = _displayToActualPath.TryGetValue(selectedDisplayPath, out var actualPath) ? actualPath : selectedDisplayPath;
+                var serviceSettings = _modifyConditionSettings.Select(s => new TransitionModifyService.ConditionSetting
+                {
+                    parameterName = s.parameterName,
+                    mode = s.mode,
+                    threshold = s.threshold,
+                    enableIntAutoIncrement = s.enableIntAutoIncrement,
+                    incrementDirection = s.incrementDirection == ModifyConditionSettingUI.IntIncrementDirection.Decrement
+                        ? TransitionModifyService.IncrementDirection.Decrement
+                        : TransitionModifyService.IncrementDirection.Increment,
+                    sortMode = s.sortMode == ModifyConditionSettingUI.SortMode.NameNumberOrder
+                        ? TransitionModifyService.SortMode.NameNumberOrder
+                        : TransitionModifyService.SortMode.ArrangementOrder,
+                    incrementStep = s.incrementStep,
+                    floatIncrementStep = s.floatIncrementStep
+                }).ToList();
+
+                TransitionModifyService.Execute(
+                    _context.SelectedController,
+                    _context.SelectedLayer,
+                    _modifyMode,
+                    targetStatePath,
+                    _modifyHasExitTimeValue,
+                    _modifyExitTimeValue,
+                    _modifyHasFixedDurationValue,
+                    _modifyDurationValue,
+                    _modifyOffsetValue,
+                    _modifyConditions,
+                    serviceSettings
+                );
             }
-
-            var serviceSettings = _modifyConditionSettings.Select(s => new TransitionModifyService.ConditionSetting
+            else
             {
-                parameterName = s.parameterName,
-                mode = s.mode,
-                threshold = s.threshold,
-                enableIntAutoIncrement = s.enableIntAutoIncrement,
-                incrementDirection = s.incrementDirection == ModifyConditionSettingUI.IntIncrementDirection.Decrement
-                    ? TransitionModifyService.IncrementDirection.Decrement
-                    : TransitionModifyService.IncrementDirection.Increment,
-                sortMode = s.sortMode == ModifyConditionSettingUI.SortMode.NameNumberOrder
-                    ? TransitionModifyService.SortMode.NameNumberOrder
-                    : TransitionModifyService.SortMode.ArrangementOrder,
-                incrementStep = s.incrementStep,
-                floatIncrementStep = s.floatIncrementStep
-            }).ToList();
+                var deltaSettings = _conditionDeltaSettings.Select(s => new TransitionModifyService.ConditionDeltaSetting
+                {
+                    parameterName = s.parameterName,
+                    mode = s.mode,
+                    threshold = s.threshold,
+                    operation = s.operation == ConditionDeltaSettingUI.ConditionOp.AddUnique
+                        ? TransitionModifyService.ConditionDeltaOperation.AddUnique
+                        : s.operation == ConditionDeltaSettingUI.ConditionOp.Remove
+                            ? TransitionModifyService.ConditionDeltaOperation.Remove
+                            : TransitionModifyService.ConditionDeltaOperation.Append,
+                    removeAllForParameter = s.operation == ConditionDeltaSettingUI.ConditionOp.Remove && s.removeAllForParameter,
+                    ignoreCondition = s.operation == ConditionDeltaSettingUI.ConditionOp.AddUnique && s.ignoreCondition
+                }).ToList();
 
-            TransitionModifyService.Execute(
-                _context.SelectedController,
-                _context.SelectedLayer,
-                _modifyMode,
-                targetStatePath,
-                _modifyHasExitTimeValue,
-                _modifyExitTimeValue,
-                _modifyHasFixedDurationValue,
-                _modifyDurationValue,
-                _modifyOffsetValue,
-                _modifyConditions,
-                serviceSettings
-            );
+                TransitionModifyService.ExecuteConditionDelta(
+                    _context.SelectedController,
+                    _context.SelectedLayer,
+                    _modifyMode,
+                    targetStatePath,
+                    deltaSettings);
+            }
             
             EditorUtility.DisplayDialog("完成", "过渡修改完成！", "确定");
         }

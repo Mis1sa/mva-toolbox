@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0-beta.1] - 2025-12-28
+
+### Added
+
+- Quick Animator Edit（过渡模式）：新增“增减 Conditions”批量编辑能力。
+- Quick Animator Edit（参数模式）：支持 MA Parameters 组件直接添加到 Parameters；参数调整新增“移除”操作。
+- AnimFix Utility：支持 MA Merge Animator 组件；查找动画支持精确指定 Blendshape。
+- Bone Active Sync：新增网格与独占骨骼启用状态同步，可选写入/移除动画属性，支持最小化父级容器与独占模式。
+
+### Fixed
+
+- Sync Main Camera to Scene View：无 Scene 视图时不再重置主摄像机到原点。
+
 ## [0.5.3] - 2025-12-25
 
 ### Fixed

@@ -57,6 +57,24 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Transition
             public float floatIncrementStep;
         }
 
+        public enum ConditionDeltaOperation
+        {
+            Append,
+            AddUnique,
+            Remove
+        }
+
+        public struct ConditionDeltaSetting
+        {
+            public string parameterName;
+            public AnimatorConditionMode mode;
+            public float threshold;
+
+            public ConditionDeltaOperation operation;
+            public bool removeAllForParameter;
+            public bool ignoreCondition;
+        }
+
         private struct TransitionInfo
         {
             public AnimatorStateTransition transition;
@@ -330,6 +348,170 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Transition
                         }
                     }
                 }
+            }
+
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[TransitionModifyService] 成功修改了 {transitionsToModifyInfo.Count} 个过渡");
+        }
+
+        public static void ExecuteConditionDelta(
+            AnimatorController controller,
+            AnimatorControllerLayer layer,
+            ModifyMode modifyMode,
+            string statePath,
+            IReadOnlyList<ConditionDeltaSetting> conditionSettings)
+        {
+            if (controller == null || layer == null) return;
+            if (string.IsNullOrEmpty(statePath)) return;
+
+            var stateMachine = layer.stateMachine;
+            if (stateMachine == null) return;
+
+            var transitionsToModifyInfo = new List<TransitionInfo>();
+
+            if (modifyMode == ModifyMode.FromStateTransitions)
+            {
+                // 由选择的状态出发
+                if (statePath == "Any State")
+                {
+                    foreach (var t in stateMachine.anyStateTransitions)
+                    {
+                        transitionsToModifyInfo.Add(new TransitionInfo
+                        {
+                            transition = t,
+                            sourceState = null
+                        });
+                    }
+                }
+                else
+                {
+                    var state = AnimatorPathUtility.FindStateByPath(stateMachine, statePath);
+                    if (state == null) return;
+
+                    foreach (var transition in state.transitions)
+                    {
+                        transitionsToModifyInfo.Add(new TransitionInfo
+                        {
+                            transition = transition,
+                            sourceState = state
+                        });
+                    }
+                }
+            }
+            else
+            {
+                // 到达选择的状态
+                if (statePath == "Exit")
+                {
+                    FindTransitionsToExit(stateMachine, transitionsToModifyInfo);
+                }
+                else
+                {
+                    var state = AnimatorPathUtility.FindStateByPath(stateMachine, statePath);
+                    if (state == null) return;
+
+                    FindTransitionsToState(stateMachine, state, transitionsToModifyInfo);
+
+                    foreach (var transition in stateMachine.anyStateTransitions)
+                    {
+                        if (transition.destinationState == state)
+                        {
+                            transitionsToModifyInfo.Add(new TransitionInfo
+                            {
+                                transition = transition,
+                                sourceState = null
+                            });
+                        }
+                    }
+                }
+
+                if (statePath != "Exit")
+                {
+                    transitionsToModifyInfo.RemoveAll(info => info.transition.isExit);
+                }
+            }
+
+            if (transitionsToModifyInfo.Count == 0)
+            {
+                Debug.LogWarning("[TransitionModifyService] 未找到符合条件的过渡可修改");
+                return;
+            }
+
+            Undo.RecordObject(controller, "Quick Transition - Condition Delta");
+
+            foreach (var info in transitionsToModifyInfo)
+            {
+                var transition = info.transition;
+                if (transition == null) continue;
+
+                if (conditionSettings == null || conditionSettings.Count == 0)
+                {
+                    continue;
+                }
+
+                var conditions = transition.conditions != null
+                    ? transition.conditions.ToList()
+                    : new List<AnimatorCondition>();
+
+                for (int i = 0; i < conditionSettings.Count; i++)
+                {
+                    var setting = conditionSettings[i];
+                    if (string.IsNullOrEmpty(setting.parameterName))
+                    {
+                        continue;
+                    }
+
+                    var parameter = controller.parameters.FirstOrDefault(p => p != null && p.name == setting.parameterName);
+                    if (parameter == null)
+                    {
+                        continue;
+                    }
+
+                    if (setting.operation == ConditionDeltaOperation.Remove)
+                    {
+                        if (setting.removeAllForParameter)
+                        {
+                            conditions.RemoveAll(c => c.parameter == setting.parameterName);
+                        }
+                        else
+                        {
+                            conditions.RemoveAll(c =>
+                                c.parameter == setting.parameterName &&
+                                c.mode == setting.mode &&
+                                Mathf.Approximately(c.threshold, setting.threshold));
+                        }
+                    }
+                    else
+                    {
+                        bool alreadyExists;
+                        if (setting.operation == ConditionDeltaOperation.AddUnique && setting.ignoreCondition)
+                        {
+                            alreadyExists = conditions.Any(c => c.parameter == setting.parameterName);
+                        }
+                        else
+                        {
+                            alreadyExists = conditions.Any(c =>
+                                c.parameter == setting.parameterName &&
+                                c.mode == setting.mode &&
+                                Mathf.Approximately(c.threshold, setting.threshold));
+                        }
+
+                        if (setting.operation == ConditionDeltaOperation.AddUnique && alreadyExists)
+                        {
+                            continue;
+                        }
+
+                        conditions.Add(new AnimatorCondition
+                        {
+                            mode = setting.mode,
+                            parameter = setting.parameterName,
+                            threshold = setting.threshold
+                        });
+                    }
+                }
+
+                transition.conditions = conditions.ToArray();
             }
 
             EditorUtility.SetDirty(controller);

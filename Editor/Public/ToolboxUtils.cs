@@ -885,6 +885,54 @@ namespace MVA.Toolbox.Public
                 }
             }
 
+            // Modular Avatar: MA Merge Animator
+            try
+            {
+                Type mergeType = null;
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                for (int i = 0; i < assemblies.Length && mergeType == null; i++)
+                {
+                    var asm = assemblies[i];
+                    if (asm == null) continue;
+                    mergeType = asm.GetType("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+                }
+
+                if (mergeType != null)
+                {
+                    var comps = root.GetComponentsInChildren<Component>(true);
+                    var animatorField = mergeType.GetField("animator");
+                    if (animatorField != null)
+                    {
+                        for (int i = 0; i < comps.Length; i++)
+                        {
+                            var c = comps[i];
+                            if (c == null) continue;
+                            if (c.GetType() != mergeType) continue;
+
+                            var rac = animatorField.GetValue(c) as RuntimeAnimatorController;
+                            if (rac == null) continue;
+
+                            if (rac is AnimatorController ac)
+                            {
+                                if (!result.Contains(ac)) result.Add(ac);
+                            }
+                            else if (rac is AnimatorOverrideController aoc)
+                            {
+                                var baseController = aoc.runtimeAnimatorController as AnimatorController;
+                                if (baseController != null && !result.Contains(baseController))
+                                {
+                                    result.Add(baseController);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略反射异常
+            }
+
             return result;
         }
 
@@ -903,6 +951,12 @@ namespace MVA.Toolbox.Public
                 if (controller == null)
                 {
                     names.Add("(Missing Controller)");
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(controller.name) && controller.name.StartsWith("[MA Parameters]", StringComparison.Ordinal))
+                {
+                    names.Add(controller.name);
                     continue;
                 }
 

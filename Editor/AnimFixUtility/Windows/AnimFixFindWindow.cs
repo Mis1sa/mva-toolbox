@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MVA.Toolbox.AnimFixUtility.Services;
 using MVA.Toolbox.AnimFixUtility.Shared;
 using MVA.Toolbox.Public;
@@ -85,6 +86,13 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
 
                 int newIndex = EditorGUILayout.Popup("属性", _service.SelectedGroupIndex, displayNames);
                 _service.ChangeGroupIndex(newIndex);
+
+                if (_service.SelectedGroupIsBlendshape && _service.CurrentBlendshapeOptions.Count > 0)
+                {
+                    int blendNewIndex = EditorGUILayout.Popup("Blendshape", _service.SelectedBlendshapeOptionIndex,
+                        _service.CurrentBlendshapeOptions.ToArray());
+                    _service.ChangeBlendshapeOptionIndex(blendNewIndex);
+                }
             }
 
             EditorGUILayout.EndVertical();

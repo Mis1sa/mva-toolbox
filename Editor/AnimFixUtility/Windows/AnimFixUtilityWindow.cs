@@ -95,7 +95,7 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
                 EditorGUILayout.Space(4f);
 
                 var controllerNames = _context.BuildControllerNameArray();
-                bool allowControllerAll = _currentTab != Tab.Bake;
+                bool allowControllerAll = _currentTab == Tab.Find;
                 if (!allowControllerAll && _context.SelectedControllerIndex < 0 && controllerNames.Length > 0)
                 {
                     _context.SelectedControllerIndex = 0;
@@ -192,9 +192,15 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
         private void DrawTabBar()
         {
             var labels = new[] { "查找动画", "默认值烘焙", "路径重定向" };
+            var previousTab = _currentTab;
             using (new EditorGUI.DisabledScope(RedirectTrackingActive))
             {
                 _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab, labels);
+            }
+
+            if (previousTab != _currentTab)
+            {
+                OnTabChanged(_currentTab);
             }
         }
 
@@ -220,6 +226,12 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
                     RedirectWindow.OnGUI();
                     break;
             }
+        }
+
+        private void OnTabChanged(Tab tab)
+        {
+            bool allowAnimatorSubtree = tab != Tab.Redirect;
+            _context.SetAllowAnimatorSubtree(allowAnimatorSubtree);
         }
 
         private AnimFixRedirectWindow RedirectWindow

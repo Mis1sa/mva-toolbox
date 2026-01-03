@@ -13,10 +13,143 @@ namespace MVA.Toolbox.AnimFixUtility.Services
     public sealed class AnimFixBakeService
     {
         private readonly AnimFixUtilityContext _context;
+        private Transform _activeControllerRoot;
 
         public AnimFixBakeService(AnimFixUtilityContext context)
         {
             _context = context;
+        }
+
+        private static bool TryGetMaterialPropertyValue(Renderer renderer, string propertyName, out object value)
+        {
+            value = null;
+            if (renderer == null) return false;
+            var material = renderer.sharedMaterial;
+            if (material == null || string.IsNullOrEmpty(propertyName)) return false;
+
+            string basePropertyName = propertyName;
+            bool hasComponent = false;
+            char componentChar = '\0';
+
+            int lastDot = propertyName.LastIndexOf('.');
+            if (lastDot >= 0 && lastDot < propertyName.Length - 1)
+            {
+                hasComponent = true;
+                componentChar = propertyName[lastDot + 1];
+                basePropertyName = propertyName.Substring(0, lastDot);
+            }
+
+            if (!material.HasProperty(basePropertyName))
+                return false;
+
+            ShaderUtil.ShaderPropertyType? propType = null;
+            var shader = material.shader;
+            if (shader != null)
+            {
+                int count = ShaderUtil.GetPropertyCount(shader);
+                for (int i = 0; i < count; i++)
+                {
+                    if (ShaderUtil.GetPropertyName(shader, i) == basePropertyName)
+                    {
+                        propType = ShaderUtil.GetPropertyType(shader, i);
+                        break;
+                    }
+                }
+            }
+
+            ShaderUtil.ShaderPropertyType resolvedType = propType ?? ShaderUtil.ShaderPropertyType.Float;
+
+            switch (resolvedType)
+            {
+                case ShaderUtil.ShaderPropertyType.Color:
+                    if (!hasComponent) return false;
+                    var color = material.GetColor(basePropertyName);
+                    if (TryExtractComponent(color, componentChar, out float colorValue))
+                    {
+                        value = colorValue;
+                        return true;
+                    }
+                    return false;
+                case ShaderUtil.ShaderPropertyType.Vector:
+                    if (!hasComponent) return false;
+                    var vector = material.GetVector(basePropertyName);
+                    if (TryExtractComponent(vector, componentChar, out float vectorValue))
+                    {
+                        value = vectorValue;
+                        return true;
+                    }
+                    return false;
+                case ShaderUtil.ShaderPropertyType.Float:
+                case ShaderUtil.ShaderPropertyType.Range:
+                    value = material.GetFloat(basePropertyName);
+                    return true;
+                case ShaderUtil.ShaderPropertyType.TexEnv:
+                    value = material.GetTexture(basePropertyName);
+                    return true;
+                default:
+                    break;
+            }
+
+            // Fallback: attempt vector extraction for unknown types
+            if (hasComponent)
+            {
+                var vec = material.GetVector(basePropertyName);
+                if (TryExtractComponent(vec, componentChar, out float v))
+                {
+                    value = v;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractComponent(Color color, char component, out float value)
+        {
+            value = 0f;
+            switch (char.ToLowerInvariant(component))
+            {
+                case 'r':
+                    value = color.r;
+                    return true;
+                case 'g':
+                    value = color.g;
+                    return true;
+                case 'b':
+                    value = color.b;
+                    return true;
+                case 'a':
+                    value = color.a;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryExtractComponent(Vector4 vector, char component, out float value)
+        {
+            value = 0f;
+            switch (char.ToLowerInvariant(component))
+            {
+                case 'x':
+                case 'r':
+                    value = vector.x;
+                    return true;
+                case 'y':
+                case 'g':
+                    value = vector.y;
+                    return true;
+                case 'z':
+                case 'b':
+                    value = vector.z;
+                    return true;
+                case 'w':
+                case 'a':
+                    value = vector.w;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         public bool TryResolveLayer(out AnimatorController controller, out AnimatorControllerLayer layer, out string errorMessage)
@@ -86,7 +219,15 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                 "取消");
             if (!confirm) return;
 
-            ProcessSelectedLayer(controller, layer, suffixName, saveFolderRelative, onlyGenerateClips, defaultRootFolder);
+            _activeControllerRoot = _context.GetControllerRoot(controller) ?? _context.TargetRoot?.transform;
+            try
+            {
+                ProcessSelectedLayer(controller, layer, suffixName, saveFolderRelative, onlyGenerateClips, defaultRootFolder);
+            }
+            finally
+            {
+                _activeControllerRoot = null;
+            }
         }
 
         private void ProcessSelectedLayer(AnimatorController controller,
@@ -338,13 +479,12 @@ namespace MVA.Toolbox.AnimFixUtility.Services
 
         private object GetDefaultValueFromObject(EditorCurveBinding binding)
         {
-            var root = _context.TargetRoot;
-            if (root == null || binding.path == null)
+            if (binding.path == null)
             {
                 return null;
             }
 
-            var target = root.transform.Find(binding.path)?.gameObject;
+            var target = ResolveTargetGameObject(binding.path);
             if (target == null) return null;
 
             string propertyName = binding.propertyName;
@@ -357,41 +497,12 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             if (propertyName.StartsWith("material.", StringComparison.Ordinal))
             {
                 var renderer = target.GetComponent<Renderer>();
-                if (renderer != null && renderer.sharedMaterial != null)
+                if (renderer != null)
                 {
                     string strippedPropertyName = propertyName.Substring("material.".Length);
-
-                    if (strippedPropertyName.EndsWith(".r") || strippedPropertyName.EndsWith(".g") ||
-                        strippedPropertyName.EndsWith(".b") || strippedPropertyName.EndsWith(".a"))
+                    if (TryGetMaterialPropertyValue(renderer, strippedPropertyName, out var materialValue))
                     {
-                        string basePropertyName = strippedPropertyName.Substring(0, strippedPropertyName.Length - 2);
-                        if (renderer.sharedMaterial.HasProperty(basePropertyName))
-                        {
-                            Color color = renderer.sharedMaterial.GetColor(basePropertyName);
-                            return strippedPropertyName[^1] switch
-                            {
-                                'r' => color.r,
-                                'g' => color.g,
-                                'b' => color.b,
-                                'a' => color.a,
-                                _ => null
-                            };
-                        }
-                    }
-                    else if (renderer.sharedMaterial.HasProperty(strippedPropertyName))
-                    {
-                        try
-                        {
-                            return renderer.sharedMaterial.GetFloat(strippedPropertyName);
-                        }
-                        catch
-                        {
-                            try
-                            {
-                                return renderer.sharedMaterial.GetTexture(strippedPropertyName);
-                            }
-                            catch { }
-                        }
+                        return materialValue;
                     }
                 }
             }
@@ -435,6 +546,62 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             }
 
             return null;
+        }
+
+        private GameObject ResolveTargetGameObject(string relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath))
+            {
+                return null;
+            }
+
+            var triedRoots = new HashSet<Transform>();
+
+            GameObject TryFind(Transform root)
+            {
+                if (root == null || !triedRoots.Add(root)) return null;
+                var node = root.Find(relativePath);
+                return node != null ? node.gameObject : null;
+            }
+
+            var target = TryFind(_activeControllerRoot);
+            if (target != null) return target;
+
+            var avatarRoot = _context.TargetRoot != null ? _context.TargetRoot.transform : null;
+            target = TryFind(avatarRoot);
+            if (target != null) return target;
+
+            if (_activeControllerRoot != null && avatarRoot != null &&
+                _activeControllerRoot != avatarRoot &&
+                _activeControllerRoot.IsChildOf(avatarRoot))
+            {
+                string prefix = BuildRelativePath(avatarRoot, _activeControllerRoot);
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    string combined = string.IsNullOrEmpty(relativePath) ? prefix : $"{prefix}/{relativePath}";
+                    var node = avatarRoot.Find(combined);
+                    if (node != null) return node.gameObject;
+                }
+            }
+
+            return null;
+        }
+
+        private static string BuildRelativePath(Transform root, Transform target)
+        {
+            if (root == null || target == null) return null;
+            if (root == target) return string.Empty;
+            if (!target.IsChildOf(root)) return null;
+
+            var stack = new Stack<string>();
+            var current = target;
+            while (current != null && current != root)
+            {
+                stack.Push(current.name);
+                current = current.parent;
+            }
+
+            return string.Join("/", stack);
         }
 
         private static object GetSerializedValue(Component component, string propertyName)

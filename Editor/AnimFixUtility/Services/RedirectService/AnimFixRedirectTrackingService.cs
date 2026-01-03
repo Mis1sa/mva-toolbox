@@ -4,382 +4,11 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using VRC.SDK3.Avatars.Components;
-using MVA.Toolbox.Public;
 
 namespace MVA.Toolbox.AnimPathRedirect.Services
 {
-    // Anim Path Redirect 主服务：负责路径快照、缺失检测与应用修改（UI 见 AnimPathRedirectWindow.cs）
-    internal sealed class AnimPathRedirectService
+    internal sealed partial class AnimPathRedirectService
     {
-        #region 内部数据结构
-
-        // 缺失绑定的最小粒度单位（单条曲线）
-        internal sealed class MissingCurveEntry
-        {
-            public AnimationClip Clip;
-            public EditorCurveBinding Binding;
-            public AnimationCurve Curve;
-            public ObjectReferenceKeyframe[] ObjectRefKeyframes;
-
-            public string GroupName;
-
-            public bool IsBlendshape;
-            public string NewBlendshapeName;
-            public readonly List<string> AvailableBlendshapes = new List<string>();
-
-            public bool IsMarkedForRemoval;
-            public bool IsFixedByGroup { get; set; }
-
-            public bool IsComponentChange;
-
-            public bool IsObjectReference => ObjectRefKeyframes != null && ObjectRefKeyframes.Length > 0;
-        }
-
-        public (int matchedCount, int skippedAmbiguous, int skippedInvalid) AutoMatchMissingFixTargets()
-        {
-            if (!HasSnapshot || _targetRoot == null)
-            {
-                return (0, 0, 0);
-            }
-
-            CalculateCurrentPaths();
-
-            var nameToObjects = new Dictionary<string, List<GameObject>>(StringComparer.OrdinalIgnoreCase);
-            var allTransforms = _targetRoot.GetComponentsInChildren<Transform>(true);
-            foreach (var t in allTransforms)
-            {
-                if (t == null) continue;
-                var go = t.gameObject;
-                if (go == null) continue;
-
-                var name = go.name ?? string.Empty;
-                if (!nameToObjects.TryGetValue(name, out var list))
-                {
-                    list = new List<GameObject>();
-                    nameToObjects.Add(name, list);
-                }
-                list.Add(go);
-            }
-
-            int matched = 0;
-            int ambiguous = 0;
-            int invalid = 0;
-
-            foreach (var group in _missingGroups)
-            {
-                if (group == null) continue;
-                if (group.OwnerDeleted) continue;
-                if (group.IsEmpty) continue;
-                if (_ignoreAllMissing && group.FixTarget == null) continue;
-
-                // 不覆盖用户已手动指定的修复目标
-                if (group.FixTarget != null) continue;
-
-                string expectedName = GetObjectNameFromPath(group.OldPath);
-                if (string.IsNullOrEmpty(expectedName))
-                {
-                    continue;
-                }
-
-                // 根物体不参与自动匹配（避免误把 FixTarget 指向根）
-                if (string.Equals(expectedName, "根物体 (Root)", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (!nameToObjects.TryGetValue(expectedName, out var candidates) || candidates == null || candidates.Count == 0)
-                {
-                    continue;
-                }
-
-                if (candidates.Count != 1)
-                {
-                    ambiguous++;
-                    continue;
-                }
-
-                var candidate = candidates[0];
-                if (candidate == null)
-                {
-                    continue;
-                }
-
-                var requiredTypes = group.RequiredTypes;
-                if (requiredTypes != null && requiredTypes.Count > 0)
-                {
-                    bool ok = true;
-                    for (int i = 0; i < requiredTypes.Count; i++)
-                    {
-                        var type = requiredTypes[i];
-                        if (type == null) continue;
-
-                        if (type == typeof(GameObject) || type == typeof(Transform))
-                        {
-                            continue;
-                        }
-
-                        if (candidate.GetComponent(type) == null)
-                        {
-                            ok = false;
-                            break;
-                        }
-                    }
-
-                    if (!ok)
-                    {
-                        invalid++;
-                        continue;
-                    }
-                }
-
-                group.FixTarget = candidate;
-                UpdateFixTargetStatus(group);
-                matched++;
-            }
-
-            return (matched, ambiguous, invalid);
-        }
-
-        // 按物体路径聚合的缺失绑定组
-        internal sealed class MissingObjectGroup
-        {
-            public string OldPath;
-            public UnityEngine.Object FixTarget;
-            public readonly Dictionary<Type, List<MissingCurveEntry>> CurvesByType = new Dictionary<Type, List<MissingCurveEntry>>();
-            public bool IsExpanded = false;
-
-            public bool OwnerExistedAtSnapshot;
-
-            public string CurrentPath;
-
-            public bool OwnerDeleted;
-
-            public List<Type> RequiredTypes => CurvesByType
-                .Where(kvp => kvp.Value.Any(c => !c.IsMarkedForRemoval))
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            public bool IsFixed => FixTarget != null;
-            public bool IsEmpty => CurvesByType.All(kvp => kvp.Value.All(c => c.IsMarkedForRemoval));
-
-            public string TargetObjectName
-            {
-                get
-                {
-                    // 优先使用当前路径（当物体被重命名/移动时），否则回退到快照时记录的旧路径。
-                    var path = string.IsNullOrEmpty(CurrentPath) ? OldPath : CurrentPath;
-
-                    if (string.IsNullOrEmpty(path)) return "根物体 (Root)";
-                    var parts = path.Split('/');
-                    return parts.Length > 0 ? parts[parts.Length - 1] : path;
-                }
-            }
-        }
-
-        // 组件级变更（目前主要用于记录组件被移除的曲线）
-        internal sealed class ComponentChangeGroup
-        {
-            public string Path;
-            public Type ComponentType;
-            public bool IsRemoved;
-            public readonly List<EditorCurveBinding> Bindings = new List<EditorCurveBinding>();
-
-            public string TargetObjectName
-            {
-                get
-                {
-                    if (string.IsNullOrEmpty(Path)) return "根物体 (Root)";
-                    var parts = Path.Split('/');
-                    return parts.Length > 0 ? parts[parts.Length - 1] : Path;
-                }
-            }
-
-            public string ComponentName => ComponentType != null ? ComponentType.Name : "Component";
-        }
-
-        // 物体路径级变更（重命名/移动/删除）
-        internal sealed class PathChangeGroup
-        {
-            public int InstanceID;
-            public string OldPath;
-            public string NewPath;
-            public bool IsDeleted;
-            public readonly List<EditorCurveBinding> Bindings = new List<EditorCurveBinding>();
-
-            public bool HasPathChanged => OldPath != NewPath;
-
-            public string TargetObjectName
-            {
-                get
-                {
-                    if (string.IsNullOrEmpty(OldPath)) return "根物体 (Root)";
-                    var parts = OldPath.Split('/');
-                    return parts.Length > 0 ? parts[parts.Length - 1] : OldPath;
-                }
-            }
-        }
-
-        #endregion
-
-        GameObject _targetRoot;
-        readonly List<AnimatorController> _controllers = new List<AnimatorController>();
-        readonly List<string> _controllerNames = new List<string>();
-        int _selectedControllerIndex;
-
-        int _selectedLayerIndex;
-
-        readonly List<PathChangeGroup> _pathChangeGroups = new List<PathChangeGroup>();
-        readonly List<MissingObjectGroup> _missingGroups = new List<MissingObjectGroup>();
-
-        readonly List<ComponentChangeGroup> _componentChangeGroups = new List<ComponentChangeGroup>();
-
-        // 组件/约束曲线快照服务，定义于 AnimPathRedirectComponentService.cs
-        readonly AnimPathRedirectComponentService _componentService = new AnimPathRedirectComponentService();
-
-        // 是否在应用时整体忽略“未指定修复目标的缺失”
-        bool _ignoreAllMissing;
-        bool _hierarchyChanged;
-
-        int _trackedControllerIndex = -1;
-        int _trackedLayerIndex = -1;
-
-        const string AllLayersName = "全部层级 (ALL)";
-
-        #region 对外属性
-
-        public GameObject TargetRoot => _targetRoot;
-
-        public IReadOnlyList<AnimatorController> Controllers => _controllers;
-        public IReadOnlyList<string> ControllerNames => _controllerNames;
-
-        public int SelectedControllerIndex
-        {
-            get => _selectedControllerIndex;
-            set => _selectedControllerIndex = Mathf.Clamp(value, 0, _controllers.Count > 0 ? _controllers.Count - 1 : 0);
-        }
-
-        public AnimatorController SelectedController
-        {
-            get
-            {
-                if (_selectedControllerIndex < 0 || _selectedControllerIndex >= _controllers.Count)
-                {
-                    return null;
-                }
-
-                return _controllers[_selectedControllerIndex];
-            }
-        }
-
-        public int SelectedLayerIndex
-        {
-            get => _selectedLayerIndex;
-            set => _selectedLayerIndex = Mathf.Max(0, value);
-        }
-
-        public bool HasSnapshot => _pathChangeGroups.Count > 0 || _missingGroups.Count > 0;
-
-        public bool IgnoreAllMissing
-        {
-            get => _ignoreAllMissing;
-            set => _ignoreAllMissing = value;
-        }
-
-        public bool HierarchyChanged
-        {
-            get => _hierarchyChanged;
-            set => _hierarchyChanged = value;
-        }
-
-        public int TrackedControllerIndex => _trackedControllerIndex;
-        public int TrackedLayerIndex => _trackedLayerIndex;
-
-        public IReadOnlyList<PathChangeGroup> PathChangeGroups => _pathChangeGroups;
-        public IReadOnlyList<MissingObjectGroup> MissingGroups => _missingGroups;
-        public IReadOnlyList<ComponentChangeGroup> ComponentChangeGroups => _componentChangeGroups;
-
-        #endregion
-
-        #region 目标与控制器管理
-
-        // 设置当前 Avatar / 根物体，同时刷新可用控制器（使用 ToolboxUtils，见 MVA.Toolbox.Public.ToolboxUtils）
-        public void SetTarget(GameObject root)
-        {
-            if (root == _targetRoot)
-            {
-                return;
-            }
-
-            _targetRoot = root;
-            ClearTracking();
-            RefreshControllers();
-        }
-
-        public void OnHierarchyChanged()
-        {
-            if (HasSnapshot)
-            {
-                _hierarchyChanged = true;
-            }
-        }
-
-        // 从 Avatar 根物体收集 AnimatorController 列表及显示名（依赖 ToolboxUtils）
-        void RefreshControllers()
-        {
-            _controllers.Clear();
-            _controllerNames.Clear();
-            _selectedControllerIndex = -1;
-            _selectedLayerIndex = 0;
-
-            if (_targetRoot == null)
-            {
-                return;
-            }
-
-            var descriptor = ToolboxUtils.GetAvatarDescriptor(_targetRoot);
-            var animator = _targetRoot.GetComponent<Animator>();
-
-            _controllers.AddRange(ToolboxUtils.CollectControllersFromRoot(_targetRoot, includeSpecialLayers: true));
-            if (_controllers.Count == 0)
-            {
-                return;
-            }
-
-            _controllerNames.AddRange(ToolboxUtils.BuildControllerDisplayNames(descriptor, animator, _controllers));
-
-            // 若 Avatar 存在 FX 控制器，则默认选中 FX
-            if (descriptor != null)
-            {
-                var fxController = ToolboxUtils.GetExistingFXController(descriptor);
-                if (fxController != null)
-                {
-                    int fxIndex = _controllers.IndexOf(fxController);
-                    if (fxIndex >= 0)
-                    {
-                        _selectedControllerIndex = fxIndex;
-                        return;
-                    }
-                }
-            }
-
-            _selectedControllerIndex = 0;
-        }
-
-        public void ClearTracking()
-        {
-            _pathChangeGroups.Clear();
-            _missingGroups.Clear();
-            _componentChangeGroups.Clear();
-            _componentService.Clear();
-            _ignoreAllMissing = false;
-            _hierarchyChanged = false;
-            _trackedControllerIndex = -1;
-            _trackedLayerIndex = -1;
-        }
-
-        #endregion
-
         #region 追踪与状态计算
 
         // 扫描选中控制器与层级中的所有动画剪辑，生成当前层级的路径与组件快照
@@ -397,6 +26,8 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                 return;
             }
 
+            var controllerRoot = ResolveControllerRoot(controller) ?? _targetRoot.transform;
+
             List<AnimationClip> clipsToProcess = GetClipsToProcess(controller, _selectedLayerIndex);
             if (clipsToProcess.Count == 0)
             {
@@ -407,7 +38,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
             var uniquePathChangeMap = new Dictionary<string, PathChangeGroup>();
             var uniqueMissingGroupMap = new Dictionary<string, MissingObjectGroup>();
 
-            Transform rootTransform = _targetRoot.transform;
+            Transform rootTransform = controllerRoot;
 
             _componentService.BuildSnapshot(_targetRoot, clipsToProcess);
 
@@ -495,12 +126,13 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
 
             _trackedControllerIndex = _selectedControllerIndex;
             _trackedLayerIndex = _selectedLayerIndex;
+            _trackedControllerRoot = controllerRoot;
         }
 
         public void CalculateCurrentPaths()
         {
-            if (_targetRoot == null) return;
-            var animatorRoot = _targetRoot.transform;
+            var animatorRoot = _trackedControllerRoot ?? _targetRoot?.transform;
+            if (animatorRoot == null) return;
 
             _componentChangeGroups.Clear();
 
@@ -744,7 +376,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
 
                 foreach (var group in _missingGroups)
                 {
-                    if (_ignoreAllMissing && group.FixTarget == null && !group.IsEmpty)
+                    if ((_ignoreAllMissing && group.FixTarget == null) && !group.IsEmpty)
                     {
                         continue;
                     }
@@ -764,7 +396,8 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                             var go = GetGameObject(group.FixTarget);
                             if (go != null)
                             {
-                                newPath = GetRelativePath(go.transform, _targetRoot.transform);
+                                var relRoot = _trackedControllerRoot ?? _targetRoot.transform;
+                                newPath = GetRelativePath(go.transform, relRoot);
                             }
                         }
                     }
@@ -841,6 +474,21 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
         #endregion
 
         #region 辅助方法
+
+        private Transform ResolveControllerRoot(AnimatorController controller)
+        {
+            if (controller == null)
+            {
+                return _targetRoot != null ? _targetRoot.transform : null;
+            }
+
+            if (_controllerRootMap.TryGetValue(controller, out var root) && root != null)
+            {
+                return root;
+            }
+
+            return _targetRoot != null ? _targetRoot.transform : null;
+        }
 
         string GetCanonicalGroupName(string propertyName, Type type)
         {

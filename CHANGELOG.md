@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.0-beta.2] - 2026-01-03
+
+### Fixed
+
+- 修复 AnimFixUtility 中各个功能的控制权选择范围的问题。
+
 ## [0.6.0-beta.1] - 2025-12-28
 
 ### Added

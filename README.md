@@ -14,12 +14,12 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时�
   - BlendTree 模式：快速定位状态下的 BlendTree，并支持移动、导出、创建父级等操作。
 
 - **AnimFix Utility**
-  - **查找动画**：按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip，支持精确 Blendshape 查询，支持 MA Merge Animator。
+  - **查找动画**：按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip。
   - **烘培默认值**：将 Avatar 当前默认姿态烘焙为 AnimationClip，用于在切换控制器或合并状态机前保存默认状态。
   - **动画重定向**：辅助修复动画缺失属性和追踪 Animator 曲线并批量重定向层级、组件与 BlendShape 变动导致的路径。
 
 - **Sync Main Camera to Scene View**
-  - 在播放模式下，将主摄像机的位置和旋转对齐到 Scene 视图相机（无 Scene 视图时不再重置到原点）
+  - 在播放模式下，将主摄像机的位置和旋转对齐到 Scene 视图相机
 
 - **Bone Active Sync**
   - 录制/编辑时同步网格与独占骨骼的启用状态，可选写入/移除动画属性，支持最小化父级容器策略与独占骨骼模式。
@@ -38,10 +38,6 @@ MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时�
   - Unity **2022.3.22f1**
   - VRChat Avatars SDK：`com.vrchat.avatars`
   - NDMF：`nadena.dev.ndmf`  
-    > 通过 VCC 安装本包时，会自动一并安装其依赖，请优先使用 VCC 安装。
-
-- **可选**
-  - Avatar Optimizer：兼容其BlendShape重命名相关功能
 
 ## 安装与使用
 

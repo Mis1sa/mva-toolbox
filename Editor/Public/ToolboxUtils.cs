@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
+using MVA.Toolbox.AnimFixUtility.Services;
 
 namespace MVA.Toolbox.Public
 {
@@ -843,96 +844,22 @@ namespace MVA.Toolbox.Public
             return animator != null && animator.runtimeAnimatorController != null;
         }
 
-        // 从 Avatar/Animator 根对象收集所有相关 AnimatorController
-        public static List<AnimatorController> CollectControllersFromRoot(GameObject root, bool includeSpecialLayers = true)
+        // 从 Avatar/Animator 根对象收集所有相关 AnimatorController（仅返回控制器列表）
+        public static List<AnimatorController> CollectControllersFromRoot(
+            GameObject root,
+            bool includeSpecialLayers = true,
+            bool allowAnimatorSubtree = true)
         {
-            var result = new List<AnimatorController>();
-            if (root == null) return result;
-
-            var descriptor = root.GetComponent<VRCAvatarDescriptor>();
-            if (descriptor != null)
+            var entries = AnimFixControllerScanUtility.CollectControllersWithRoot(root, includeSpecialLayers, allowAnimatorSubtree);
+            var result = new List<AnimatorController>(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
             {
-                var baseLayers = descriptor.baseAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
-                for (int i = 0; i < baseLayers.Length; i++)
+                var controller = entries[i].Controller;
+                if (controller != null)
                 {
-                    var layer = baseLayers[i];
-                    if (layer.animatorController is AnimatorController ac && !result.Contains(ac))
-                    {
-                        result.Add(ac);
-                    }
-                }
-
-                if (includeSpecialLayers)
-                {
-                    var specialLayers = descriptor.specialAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
-                    for (int i = 0; i < specialLayers.Length; i++)
-                    {
-                        var layer = specialLayers[i];
-                        if (layer.animatorController is AnimatorController ac && !result.Contains(ac))
-                        {
-                            result.Add(ac);
-                        }
-                    }
+                    result.Add(controller);
                 }
             }
-
-            var animator = root.GetComponent<Animator>();
-            if (animator != null && animator.runtimeAnimatorController is AnimatorController runtimeController)
-            {
-                if (!result.Contains(runtimeController))
-                {
-                    result.Add(runtimeController);
-                }
-            }
-
-            // Modular Avatar: MA Merge Animator
-            try
-            {
-                Type mergeType = null;
-                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                for (int i = 0; i < assemblies.Length && mergeType == null; i++)
-                {
-                    var asm = assemblies[i];
-                    if (asm == null) continue;
-                    mergeType = asm.GetType("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-                }
-
-                if (mergeType != null)
-                {
-                    var comps = root.GetComponentsInChildren<Component>(true);
-                    var animatorField = mergeType.GetField("animator");
-                    if (animatorField != null)
-                    {
-                        for (int i = 0; i < comps.Length; i++)
-                        {
-                            var c = comps[i];
-                            if (c == null) continue;
-                            if (c.GetType() != mergeType) continue;
-
-                            var rac = animatorField.GetValue(c) as RuntimeAnimatorController;
-                            if (rac == null) continue;
-
-                            if (rac is AnimatorController ac)
-                            {
-                                if (!result.Contains(ac)) result.Add(ac);
-                            }
-                            else if (rac is AnimatorOverrideController aoc)
-                            {
-                                var baseController = aoc.runtimeAnimatorController as AnimatorController;
-                                if (baseController != null && !result.Contains(baseController))
-                                {
-                                    result.Add(baseController);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // 忽略反射异常
-            }
-
             return result;
         }
 
@@ -1007,8 +934,5 @@ namespace MVA.Toolbox.Public
 
             return names;
         }
-
-        // 以上 Clip 相关逻辑仅在旧版 VRChat Toolbox 中使用，此处不再提供公共跳转实现，
-        // 新的动画跳转与查找工具将由 FindAnimation 模块自行实现和维护。
     }
 }

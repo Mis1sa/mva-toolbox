@@ -21,6 +21,7 @@ namespace MVA.Toolbox.AnimFixUtility.Services
 
         private Object _selectedAnimatedObject;
         private string _selectedPath;
+        private Transform _selectedTransform;
 
         private readonly List<PropertyGroupData> _availableGroups = new();
         private readonly List<FoundClipInfo> _foundClips = new();
@@ -92,6 +93,8 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                 return false;
 
             _selectedAnimatedObject = normalized;
+            _selectedTransform = (_selectedAnimatedObject as Component)?.transform ??
+                                 (_selectedAnimatedObject as GameObject)?.transform;
             _selectedPath = null;
             _availableGroups.Clear();
             _selectedGroupIndex = 0;
@@ -304,6 +307,7 @@ namespace MVA.Toolbox.AnimFixUtility.Services
         private void ResetSelection()
         {
             _selectedAnimatedObject = null;
+            _selectedTransform = null;
             _selectedPath = null;
             _availableGroups.Clear();
             _selectedGroupIndex = 0;
@@ -324,25 +328,21 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                 return;
 
             Transform root = _context.TargetRoot.transform;
-            Transform objectTransform = null;
-
-            if (_selectedAnimatedObject is Component component)
-                objectTransform = component.transform;
-            else if (_selectedAnimatedObject is GameObject go)
-                objectTransform = go.transform;
-
-            if (objectTransform == null)
+            if (_selectedTransform == null)
                 return;
 
-            _selectedPath = GetRelativePath(objectTransform, root);
-
-            if (string.IsNullOrEmpty(_selectedPath) && objectTransform != root)
+            if (!TryGetRelativePath(_selectedTransform, root, out _selectedPath))
                 return;
 
             var uniqueBindings = new Dictionary<(string path, string propertyName, Type type), EditorCurveBinding>();
 
-            ForEachLayerInScope((controller, layer) =>
+            var controllerPathCache = new Dictionary<AnimatorController, string>();
+
+            ForEachLayerInScope((controller, layer, controllerRoot) =>
             {
+                if (!TryGetSelectedPathForController(controller, controllerRoot, controllerPathCache, out var relativePath))
+                    return;
+
                 var clips = GetClipsFromStateMachine(layer.stateMachine);
                 for (int j = 0; j < clips.Count; j++)
                 {
@@ -353,7 +353,7 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                     for (int k = 0; k < bindings.Length; k++)
                     {
                         var binding = bindings[k];
-                        if (binding.path != _selectedPath)
+                        if (binding.path != relativePath)
                             continue;
 
                         var key = (binding.path, binding.propertyName, binding.type);
@@ -483,8 +483,13 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                 }
             }
 
-            ForEachLayerInScope((controller, layer) =>
+            var controllerPathCache = new Dictionary<AnimatorController, string>();
+
+            ForEachLayerInScope((controller, layer, controllerRoot) =>
             {
+                if (!TryGetSelectedPathForController(controller, controllerRoot, controllerPathCache, out var relativePath))
+                    return;
+
                 var clips = GetClipsFromStateMachine(layer.stateMachine);
                 for (int j = 0; j < clips.Count; j++)
                 {
@@ -498,7 +503,7 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                     for (int k = 0; k < bindings.Length; k++)
                     {
                         var binding = bindings[k];
-                        if (binding.path != _selectedPath)
+                        if (binding.path != relativePath)
                             continue;
 
                         if (useAllGroups)
@@ -540,7 +545,40 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             _searchCompleted = true;
         }
 
-        private void ForEachLayerInScope(Action<AnimatorController, AnimatorControllerLayer> action)
+        private bool TryGetSelectedPathForController(
+            AnimatorController controller,
+            Transform controllerRoot,
+            Dictionary<AnimatorController, string> cache,
+            out string relativePath)
+        {
+            relativePath = null;
+            if (controller == null) return false;
+
+            if (cache.TryGetValue(controller, out var cached))
+            {
+                relativePath = cached;
+                return relativePath != null;
+            }
+
+            if (_selectedTransform == null)
+            {
+                cache[controller] = null;
+                return false;
+            }
+
+            var root = controllerRoot ?? _context.TargetRoot?.transform;
+            if (!TryGetRelativePath(_selectedTransform, root, out var path))
+            {
+                cache[controller] = null;
+                return false;
+            }
+
+            cache[controller] = path;
+            relativePath = path;
+            return true;
+        }
+
+        private void ForEachLayerInScope(Action<AnimatorController, AnimatorControllerLayer, Transform> action)
         {
             if (action == null) return;
 
@@ -553,7 +591,8 @@ namespace MVA.Toolbox.AnimFixUtility.Services
                 {
                     var controller = controllers[i];
                     if (controller == null) continue;
-                    IterateControllerLayers(controller, _context.SelectedLayerIndex, action);
+                    var controllerRoot = _context.GetControllerRoot(controller) ?? _context.TargetRoot?.transform;
+                    IterateControllerLayers(controller, controllerRoot, _context.SelectedLayerIndex, action);
                 }
                 return;
             }
@@ -561,10 +600,15 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             var selectedController = _context.SelectedController;
             if (selectedController == null) return;
 
-            IterateControllerLayers(selectedController, _context.SelectedLayerIndex, action);
+            var selectedRoot = _context.SelectedControllerRoot ?? _context.TargetRoot?.transform;
+            IterateControllerLayers(selectedController, selectedRoot, _context.SelectedLayerIndex, action);
         }
 
-        private static void IterateControllerLayers(AnimatorController controller, int selectedLayerIndex, Action<AnimatorController, AnimatorControllerLayer> action)
+        private static void IterateControllerLayers(
+            AnimatorController controller,
+            Transform controllerRoot,
+            int selectedLayerIndex,
+            Action<AnimatorController, AnimatorControllerLayer, Transform> action)
         {
             var layers = controller.layers ?? Array.Empty<AnimatorControllerLayer>();
             if (layers.Length == 0) return;
@@ -573,14 +617,14 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             {
                 for (int i = 0; i < layers.Length; i++)
                 {
-                    action(controller, layers[i]);
+                    action(controller, layers[i], controllerRoot);
                 }
                 return;
             }
 
             if (selectedLayerIndex >= 0 && selectedLayerIndex < layers.Length)
             {
-                action(controller, layers[selectedLayerIndex]);
+                action(controller, layers[selectedLayerIndex], controllerRoot);
             }
         }
 
@@ -770,11 +814,19 @@ namespace MVA.Toolbox.AnimFixUtility.Services
 
         private static string GetRelativePath(Transform target, Transform root)
         {
-            if (target == null || root == null)
+            if (!TryGetRelativePath(target, root, out var path))
                 return string.Empty;
+            return path ?? string.Empty;
+        }
+
+        private static bool TryGetRelativePath(Transform target, Transform root, out string path)
+        {
+            path = string.Empty;
+            if (target == null || root == null)
+                return false;
 
             if (target == root)
-                return string.Empty;
+                return true;
 
             var stack = new Stack<string>();
             var current = target;
@@ -785,9 +837,10 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             }
 
             if (current != root)
-                return string.Empty;
+                return false;
 
-            return string.Join("/", stack.ToArray());
+            path = string.Join("/", stack.ToArray());
+            return true;
         }
 
         private void AugmentGroupsWithAqtConfigForTarget()

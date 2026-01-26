@@ -240,7 +240,6 @@ namespace MVA.Toolbox.QuickRemoveBones
 
             if (renderer is not SkinnedMeshRenderer)
             {
-                EditorUtility.DisplayDialog("仅支持 SkinnedMeshRenderer", "请拖入需要移除的 SkinnedMeshRenderer。", "确定");
                 return false;
             }
 

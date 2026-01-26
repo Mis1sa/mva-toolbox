@@ -45,9 +45,47 @@ namespace MVA.Toolbox.Public
         public static string BuildAqtLayerFolder(string rootPath, string layerName)
         {
             string segment = SanitizePathSegment(layerName);
-            if (string.IsNullOrEmpty(rootPath)) rootPath = AqtRootFolder;
-            if (!rootPath.StartsWith("Assets/")) rootPath = AqtRootFolder;
-            return $"{rootPath}/{segment}";
+            string normalizedRoot = NormalizeAssetsRoot(rootPath);
+            return $"{normalizedRoot}/{segment}";
+        }
+
+        public static string SanitizeAssetFileName(string name, string fallback = "Asset")
+        {
+            if (string.IsNullOrWhiteSpace(name)) return fallback;
+
+            var invalid = Path.GetInvalidFileNameChars();
+            var chars = name.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (invalid.Contains(chars[i]))
+                {
+                    chars[i] = '_';
+                }
+            }
+
+            var result = new string(chars).Trim();
+            return string.IsNullOrEmpty(result) ? fallback : result;
+        }
+
+        private static string NormalizeAssetsRoot(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return AqtRootFolder;
+
+            string trimmed = path.Trim().Replace('\\', '/');
+
+            if (string.Equals(trimmed, "Assets", StringComparison.OrdinalIgnoreCase))
+                return "Assets";
+
+            if (!trimmed.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                return AqtRootFolder;
+
+            while (trimmed.Length > "Assets".Length && trimmed.EndsWith("/", StringComparison.Ordinal))
+            {
+                trimmed = trimmed.Substring(0, trimmed.Length - 1);
+            }
+
+            return trimmed;
         }
 
         public static Vector2 ScrollView(Vector2 scroll, System.Action drawContent, params GUILayoutOption[] options)

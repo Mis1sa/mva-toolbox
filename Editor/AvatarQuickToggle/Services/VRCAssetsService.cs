@@ -92,7 +92,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             }
 
             // 新建控件时：若当前菜单已满，则通过 EnsureMenuHasFreeSlot 进行分页
-            var targetMenu = EnsureMenuHasFreeSlot(menu);
+            var targetMenu = EnsureMenuHasFreeSlot(menu, assetFolder, controlName);
 
             var control = new VRCExpressionsMenu.Control
             {
@@ -127,7 +127,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             }
 
             // 新建控件时：若当前菜单已满，则尝试使用/创建“下一页”风格的子菜单进行分页
-            var targetMenu = EnsureMenuHasFreeSlot(menu);
+            var targetMenu = EnsureMenuHasFreeSlot(menu, assetFolder, controlName);
 
             var control = new VRCExpressionsMenu.Control
             {

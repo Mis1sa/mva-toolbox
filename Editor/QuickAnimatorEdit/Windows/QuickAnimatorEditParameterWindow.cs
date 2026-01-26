@@ -292,6 +292,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private ParameterCheckService.CheckResult _checkResult;
         private Vector2 _checkScrollPosition;
         private List<ParameterIssueUI> _issueUIs = new List<ParameterIssueUI>();
+        private bool _unusedSelectAll;
 
         private class ParameterIssueUI
         {
@@ -961,31 +962,47 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
 
             if (missingIssues.Count > 0)
             {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.LabelField("缺失参数引用", EditorStyles.boldLabel);
                 foreach (var ui in missingIssues)
                 {
                     DrawMissingReferenceRow(ui, controllerParamNames);
                 }
+                EditorGUILayout.EndVertical();
                 EditorGUILayout.Space(8f);
             }
 
             if (unusedIssues.Count > 0)
             {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField("无用参数", EditorStyles.boldLabel);
+                if (GUILayout.Button(_unusedSelectAll ? "全不选" : "全选", GUILayout.Width(60f)))
+                {
+                    _unusedSelectAll = !_unusedSelectAll;
+                    foreach (var ui in unusedIssues)
+                    {
+                        ui.RemoveUnused = _unusedSelectAll;
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
                 foreach (var ui in unusedIssues)
                 {
                     DrawUnusedParameterRow(ui);
                 }
+                EditorGUILayout.EndVertical();
                 EditorGUILayout.Space(8f);
             }
 
             if (mismatchIssues.Count > 0)
             {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.LabelField("参数类型不匹配", EditorStyles.boldLabel);
                 foreach (var ui in mismatchIssues)
                 {
                     DrawTypeMismatchRow(ui);
                 }
+                EditorGUILayout.EndVertical();
             }
 
             EditorGUILayout.EndScrollView();
@@ -1004,6 +1021,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             {
                 return;
             }
+            _unusedSelectAll = false;
 
             foreach (var issue in _checkResult.Issues)
             {

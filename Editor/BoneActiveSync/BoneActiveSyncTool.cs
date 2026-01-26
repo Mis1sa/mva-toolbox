@@ -37,6 +37,7 @@ namespace MVA.Toolbox.BoneSyncTools
 
         private static Transform _lastRoot;
         private static Transform _lastRecordingRoot;
+        private static int _externalSuppressionCount;
 
         static BoneActiveSyncTool()
         {
@@ -51,6 +52,23 @@ namespace MVA.Toolbox.BoneSyncTools
 
             Undo.postprocessModifications += OnPostprocessModifications;
             AnimationUtility.onCurveWasModified += OnCurveWasModified;
+        }
+
+        public static void PushExternalSuppression()
+        {
+            _externalSuppressionCount = Mathf.Max(0, _externalSuppressionCount) + 1;
+        }
+
+        public static void PopExternalSuppression()
+        {
+            if (_externalSuppressionCount <= 0)
+                return;
+            _externalSuppressionCount--;
+        }
+
+        private static bool IsFeatureActive()
+        {
+            return _enabled && _externalSuppressionCount == 0;
         }
 
         [MenuItem(MenuEnable, false, MenuPriority)]
@@ -131,7 +149,7 @@ namespace MVA.Toolbox.BoneSyncTools
 
         private static UndoPropertyModification[] OnPostprocessModifications(UndoPropertyModification[] mods)
         {
-            if (!_enabled || mods == null || mods.Length == 0)
+            if (!IsFeatureActive() || mods == null || mods.Length == 0)
             {
                 return mods;
             }
@@ -200,7 +218,7 @@ namespace MVA.Toolbox.BoneSyncTools
                     if (b == null) continue;
                     var t = PickMinimalTarget(b, smr, boneUsage);
                     if (t == null) continue;
-                    if (!active && !IsSafeContainer(t, smr, boneUsage, _checkChildren))
+                    if (!IsSafeContainer(t, smr, boneUsage, _checkChildren))
                         continue;
                     candidateTargets.Add(t);
                 }
@@ -366,7 +384,7 @@ namespace MVA.Toolbox.BoneSyncTools
 
         private static void OnCurveWasModified(AnimationClip clip, EditorCurveBinding binding, AnimationUtility.CurveModifiedType type)
         {
-            if (!_enabled || !_removeAnim) return;
+            if (!IsFeatureActive() || !_removeAnim) return;
             if (type != AnimationUtility.CurveModifiedType.CurveDeleted) return;
             if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") return;
             if (clip == null) return;

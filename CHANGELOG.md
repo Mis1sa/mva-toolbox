@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0-beta.3] - 2026-01-26
+
+### Fixed
+
+- Avatar Quick Toggle：
+  - 修复新建动画层的状态机与过渡无法持久化到控制器资产的问题。
+  - 修复 Int / Float 模式在生成分页菜单时无法正确创建下一页控制的问题。
+- AnimFix Utility：调整动画查找模式下 BlendShape 选项的排列，保持与原始 Mesh 顺序一致。
+- Quick Animator Edit：优化参数检查界面，增加分组盒与“无用参数”全选按钮，改善批量处理效率。
+- Bone Active Sync：
+  - 避免与 Avatar Quick Toggle 预览功能发生冲突，支持在预览期间正确挂起同步。
+  - 当关闭“仅独立骨骼”时，修复重新启用骨骼的逻辑，防止误开关父级骨骼。
+- Quick Remove Bones：忽略普通 MeshRenderer，解决每次拖入都会弹出提示框的问题。
+
 ## [0.6.0-beta.2] - 2026-01-03
 
 ### Fixed

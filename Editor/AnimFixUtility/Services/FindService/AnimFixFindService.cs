@@ -422,26 +422,82 @@ namespace MVA.Toolbox.AnimFixUtility.Services
             }
 
             var group = _availableGroups[_selectedGroupIndex - 1];
-            // 收集该分组下已绑定的 BlendShape 名称（去重，去前缀）
-            var names = new HashSet<string>();
+            // 收集该分组下已绑定的 BlendShape 名称（去重，但保留首次出现顺序）
+            var uniqueNames = new HashSet<string>(StringComparer.Ordinal);
+            var discoveredOrder = new List<string>();
             foreach (var prop in group.BoundPropertyNames)
             {
                 if (string.IsNullOrEmpty(prop)) continue;
                 const string prefix = "blendShape.";
                 if (!prop.StartsWith(prefix, StringComparison.Ordinal)) continue;
                 var name = prop.Substring(prefix.Length);
-                if (!string.IsNullOrEmpty(name))
+                if (string.IsNullOrEmpty(name)) continue;
+                if (uniqueNames.Add(name))
                 {
-                    names.Add(name);
+                    discoveredOrder.Add(name);
                 }
             }
 
             _currentBlendshapeOptions.Add("全部");
-            if (names.Count > 0)
+            if (uniqueNames.Count > 0)
             {
-                _currentBlendshapeOptions.AddRange(names.OrderBy(n => n));
+                var orderedNames = BuildMeshOrderedBlendShapes(uniqueNames, discoveredOrder);
+                _currentBlendshapeOptions.AddRange(orderedNames);
             }
             _selectedBlendshapeOptionIndex = 0;
+        }
+
+        private List<string> BuildMeshOrderedBlendShapes(HashSet<string> remainingNames, List<string> fallbackOrder)
+        {
+            var ordered = new List<string>();
+            var smr = ResolveSelectedSkinnedMeshRenderer();
+            if (smr?.sharedMesh != null)
+            {
+                var mesh = smr.sharedMesh;
+                int count = mesh.blendShapeCount;
+                for (int i = 0; i < count; i++)
+                {
+                    string shapeName = mesh.GetBlendShapeName(i);
+                    if (string.IsNullOrEmpty(shapeName)) continue;
+                    if (remainingNames.Remove(shapeName))
+                    {
+                        ordered.Add(shapeName);
+                    }
+                }
+            }
+
+            if (remainingNames.Count > 0 && fallbackOrder != null)
+            {
+                for (int i = 0; i < fallbackOrder.Count; i++)
+                {
+                    var name = fallbackOrder[i];
+                    if (remainingNames.Remove(name))
+                    {
+                        ordered.Add(name);
+                    }
+                }
+            }
+
+            if (remainingNames.Count > 0)
+            {
+                ordered.AddRange(remainingNames);
+            }
+
+            return ordered;
+        }
+
+        private SkinnedMeshRenderer ResolveSelectedSkinnedMeshRenderer()
+        {
+            if (_selectedAnimatedObject is SkinnedMeshRenderer smr)
+                return smr;
+
+            if (_selectedAnimatedObject is Component comp)
+                return comp.GetComponent<SkinnedMeshRenderer>();
+
+            if (_selectedAnimatedObject is GameObject go)
+                return go.GetComponent<SkinnedMeshRenderer>();
+
+            return null;
         }
 
         private void FindClipsForSelectedGroup()

@@ -87,7 +87,8 @@ namespace MVA.Toolbox.AvatarQuickToggle
                 error = "parameter name is required";
                 return false;
             }
-            if (string.IsNullOrEmpty(config.clipSavePath) || !config.clipSavePath.StartsWith("Assets/"))
+            bool isRootAssets = string.Equals(config.clipSavePath, "Assets", StringComparison.Ordinal);
+            if (string.IsNullOrEmpty(config.clipSavePath) || (!isRootAssets && !config.clipSavePath.StartsWith("Assets/")))
             {
                 error = "clip save path must start with Assets/";
                 return false;

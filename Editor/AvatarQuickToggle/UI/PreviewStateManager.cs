@@ -31,12 +31,6 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
             previewBlendSnapshot.Clear();
         }
 
-        // 从当前 Int 组列表构建基线快照，供 WD On/Off 转换使用
-        public BaselineSnapshot BuildBaselineSnapshot(List<IntStateGroup> groups) => new BaselineSnapshot
-        {
-            groups = CloneGroups(groups)
-        };
-
         public void RestorePreviewSnapshot()
         {
             foreach (var kv in previewActiveSnapshot)
@@ -458,11 +452,6 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
                 cloned.Add(cg);
             }
             return cloned;
-        }
-
-        public struct BaselineSnapshot
-        {
-            public List<IntStateGroup> groups;
         }
     }
 }

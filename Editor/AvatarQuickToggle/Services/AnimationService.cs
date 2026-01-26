@@ -199,6 +199,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             toOff.duration = 0f;
             toOff.AddCondition(AnimatorConditionMode.IfNot, 0f, data.parameterName);
 
+            PersistStateMachineHierarchy(stateMachine, controller);
+
             var layer = new AnimatorControllerLayer
             {
                 name = data.layerName,
@@ -249,6 +251,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
                 transition.AddCondition(AnimatorConditionMode.Equals, i, data.parameterName);
             }
 
+            PersistStateMachineHierarchy(stateMachine, controller);
+
             return new AnimatorControllerLayer
             {
                 name = data.layerName,
@@ -273,6 +277,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
 #endif
             SetWriteDefaults(state, data.writeDefaultSetting);
             stateMachine.defaultState = state;
+
+            PersistStateMachineHierarchy(stateMachine, controller);
 
             return new AnimatorControllerLayer
             {
@@ -659,7 +665,8 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             if (clip == null || string.IsNullOrEmpty(folderPath)) return clip;
             // 使用 ToolboxUtils 确保目标文件夹存在（方法定义于 ToolboxUtils.cs）
             ToolboxUtils.EnsureFolderExists(folderPath);
-            string assetPath = $"{folderPath}/{clip.name}.anim";
+            string fileName = ToolboxUtils.SanitizeAssetFileName(clip.name);
+            string assetPath = $"{folderPath}/{fileName}.anim";
 
             var existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             if (existing != null)
@@ -673,6 +680,96 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             AssetDatabase.SaveAssets();
             var savedClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             return savedClip != null ? savedClip : clip;
+        }
+
+        private void PersistStateMachineHierarchy(AnimatorStateMachine stateMachine, AnimatorController controller)
+        {
+            if (stateMachine == null || controller == null) return;
+
+            string controllerPath = AssetDatabase.GetAssetPath(controller);
+            if (string.IsNullOrEmpty(controllerPath)) return;
+
+            if (!AssetDatabase.Contains(stateMachine))
+            {
+                AssetDatabase.AddObjectToAsset(stateMachine, controller);
+                SetSubAssetHideFlags(stateMachine);
+            }
+
+            PersistChildStates(stateMachine);
+            PersistStateMachineTransitions(stateMachine);
+
+            foreach (var child in stateMachine.stateMachines)
+            {
+                var childStateMachine = child.stateMachine;
+                if (childStateMachine == null) continue;
+                PersistStateMachineHierarchy(childStateMachine, controller);
+            }
+        }
+
+        private void PersistChildStates(AnimatorStateMachine stateMachine)
+        {
+            if (stateMachine.states == null) return;
+
+            foreach (var childState in stateMachine.states)
+            {
+                var state = childState.state;
+                if (state == null) continue;
+
+                if (!AssetDatabase.Contains(state))
+                {
+                    AssetDatabase.AddObjectToAsset(state, stateMachine);
+                    SetSubAssetHideFlags(state);
+                }
+
+                PersistStateTransitions(state, stateMachine);
+            }
+        }
+
+        private void PersistStateTransitions(AnimatorState state, AnimatorStateMachine owner)
+        {
+            if (state?.transitions == null) return;
+            foreach (var transition in state.transitions)
+            {
+                PersistTransitionAsset(transition, owner);
+            }
+        }
+
+        private void PersistStateMachineTransitions(AnimatorStateMachine stateMachine)
+        {
+            if (stateMachine == null) return;
+
+            if (stateMachine.anyStateTransitions != null)
+            {
+                foreach (var transition in stateMachine.anyStateTransitions)
+                {
+                    PersistTransitionAsset(transition, stateMachine);
+                }
+            }
+
+            if (stateMachine.entryTransitions != null)
+            {
+                foreach (var transition in stateMachine.entryTransitions)
+                {
+                    PersistTransitionAsset(transition, stateMachine);
+                }
+            }
+
+        }
+
+        private void PersistTransitionAsset(AnimatorTransitionBase transition, UnityEngine.Object parent)
+        {
+            if (transition == null || parent == null) return;
+            if (AssetDatabase.Contains(transition)) return;
+
+            AssetDatabase.AddObjectToAsset(transition, parent);
+            SetSubAssetHideFlags(transition);
+        }
+
+        private void SetSubAssetHideFlags(UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            obj.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector;
+            EditorUtility.SetDirty(obj);
         }
     }
 }

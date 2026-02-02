@@ -12,6 +12,7 @@ using MVA.Toolbox.AvatarQuickToggle;
 using MVA.Toolbox.AvatarQuickToggle.Workflows;
 using TargetItem = MVA.Toolbox.AvatarQuickToggle.ToggleConfig.TargetItem;
 using IntStateGroup = MVA.Toolbox.AvatarQuickToggle.ToggleConfig.IntStateGroup;
+using MVA.Toolbox.BoneSyncTools;
 
 namespace MVA.Toolbox.AvatarQuickToggle.Editor
 {
@@ -92,6 +93,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Editor
         private int targetsVersion = 0;
         private readonly PreviewStateManager previewState = new PreviewStateManager();
         private bool hasPreviewSnapshot = false;
+        private bool boneSyncSuppressedForPreview = false;
 
         [MenuItem("Tools/MVA Toolbox/Avatar Quick Toggle", false, 1)]
         public static void Open()
@@ -1621,6 +1623,11 @@ AfterParameterPopup: ;
                 ShowNotification(new GUIContent("请先拖入 Avatar"));
                 return;
             }
+            if (!boneSyncSuppressedForPreview)
+            {
+                BoneActiveSyncTool.PushExternalSuppression();
+                boneSyncSuppressedForPreview = true;
+            }
             previewState.CaptureAvatarSnapshot(root, true);
             hasPreviewSnapshot = true;
             isPreviewing = true;
@@ -1633,6 +1640,11 @@ AfterParameterPopup: ;
             previewState.RestorePreviewSnapshot();
             isPreviewing = false;
             hasPreviewSnapshot = false;
+            if (boneSyncSuppressedForPreview)
+            {
+                BoneActiveSyncTool.PopExternalSuppression();
+                boneSyncSuppressedForPreview = false;
+            }
         }
 
         private void ApplyCurrentPreviewValues()

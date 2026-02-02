@@ -4,6 +4,120 @@ using UnityEngine;
 
 namespace MVA.Toolbox.SyncCamera.Editor
 {
+    [InitializeOnLoad]
+    internal static class SyncCameraPoseCache
+    {
+        private static Vector3 _cachedPosition;
+        private static Quaternion _cachedRotation = Quaternion.identity;
+        private static bool _hasPose;
+        private static bool _isRecording;
+
+        static SyncCameraPoseCache()
+        {
+            EditorApplication.playModeStateChanged += HandlePlayModeChange;
+            RefreshRecordingState();
+        }
+
+        internal static void OnSyncToggleChanged(bool enabled)
+        {
+            if (enabled)
+            {
+                RefreshRecordingState();
+            }
+            else
+            {
+                StopRecording(clearCache: true);
+            }
+        }
+
+        private static void HandlePlayModeChange(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode)
+            {
+                StopRecording(clearCache: false);
+                ApplyCachedPoseImmediate("退出编辑模式");
+            }
+            else if (state == PlayModeStateChange.EnteredEditMode)
+            {
+                RefreshRecordingState();
+            }
+        }
+
+        private static void RefreshRecordingState()
+        {
+            if (!Application.isPlaying && SyncCameraTool.IsSyncEnabled())
+            {
+                StartRecording();
+            }
+            else
+            {
+                StopRecording(clearCache: false);
+            }
+        }
+
+        private static void StartRecording()
+        {
+            if (_isRecording)
+                return;
+
+            SceneView.duringSceneGui += RecordScenePose;
+            _isRecording = true;
+        }
+
+        private static void StopRecording(bool clearCache)
+        {
+            if (_isRecording)
+            {
+                SceneView.duringSceneGui -= RecordScenePose;
+                _isRecording = false;
+            }
+
+            if (clearCache)
+            {
+                _hasPose = false;
+                _cachedPosition = default;
+                _cachedRotation = Quaternion.identity;
+            }
+        }
+
+        private static void RecordScenePose(SceneView sceneView)
+        {
+            if (sceneView == null || sceneView.camera == null)
+                return;
+
+            if (Application.isPlaying)
+                return;
+
+            if (!SyncCameraTool.IsSyncEnabled())
+                return;
+
+            var transform = sceneView.camera.transform;
+            _cachedPosition = transform.position;
+            _cachedRotation = transform.rotation;
+            _hasPose = true;
+        }
+
+        private static void ApplyCachedPoseImmediate(string reason)
+        {
+            if (!_hasPose)
+                return;
+
+            var mainCam = Camera.main;
+            if (mainCam == null)
+                return;
+
+            mainCam.transform.SetPositionAndRotation(_cachedPosition, _cachedRotation);
+        }
+
+        internal static void ApplyCachedPoseOnDemand(string reason)
+        {
+            if (!Application.isPlaying)
+                return;
+
+            ApplyCachedPoseImmediate(reason);
+        }
+    }
+
     // 菜单：切换主摄像机在播放模式下是否跟随 Scene 视图相机
     public static class SyncCameraTool
     {
@@ -17,6 +131,7 @@ namespace MVA.Toolbox.SyncCamera.Editor
             EditorPrefs.SetBool(EditorPrefsKey, isEnabled);
             Menu.SetChecked(MenuPath, isEnabled);
             Debug.Log($"[SyncCamera] 主摄像机与场景视图的同步功能已{(isEnabled ? "启用" : "禁用")}");
+            SyncCameraPoseCache.OnSyncToggleChanged(isEnabled);
 
             if (EditorApplication.isPlaying)
             {
@@ -98,6 +213,7 @@ namespace MVA.Toolbox.SyncCamera.Editor
                 if (mainCam != null && mainCam.GetComponent<SyncCameraComponent>() == null)
                 {
                     mainCam.gameObject.AddComponent<SyncCameraComponent>();
+                    SyncCameraPoseCache.ApplyCachedPoseOnDemand("播放时启用");
                 }
             }
         }

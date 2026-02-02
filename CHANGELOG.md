@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.0] - 2026-02-02
+
+### Changed
+
+- Sync Main Camera to Scene View：重构同步流程，新增编辑模式缓存、播放前一次性对齐与运行时启停逻辑，改善在切换 Game / Scene 视图、缺少 Scene 视窗以及退出播放模式时的相机体验。
+
 ## [0.6.0-beta.3] - 2026-01-26
 
 ### Fixed

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1] - 2026-02-09
+
+### Fixed
+
+- Quick Animator Edit：
+  - 修复分割状态功能中 Transition 手动调整列表无法正确区分不同子状态机中同名状态的问题。
+
 ## [0.6.0] - 2026-02-02
 
 ### Changed

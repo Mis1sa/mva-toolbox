@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -14,12 +17,38 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
     /// </summary>
     public static class ParameterCheckService
     {
+        private static readonly AnimatorControllerParameterType[] _expectedTypePriority =
+        {
+            AnimatorControllerParameterType.Bool,
+            AnimatorControllerParameterType.Int,
+            AnimatorControllerParameterType.Float,
+            AnimatorControllerParameterType.Trigger
+        };
+
         public enum IssueType
         {
             MissingReference,    // 缺失参数引用 (使用了不存在的参数)
             UnusedParameter,     // 无用参数 (定义了但未被使用)
-            TypeMismatch         // 类型不匹配 (暂未实现完全检测)
+            TypeMismatch,        // 类型不匹配 (暂未实现完全检测)
+            BrokenPPtr           // YAML 中存在损坏的 PPtr 引用
         }
+
+        private sealed class BrokenPPtrLocation
+        {
+            public int LineIndex;
+            public int MatchIndex;
+            public int MatchLength;
+            public string RawToken;
+            public string PropertyLabel;
+        }
+
+        private static readonly Regex _yamlDocumentHeaderRegex = new Regex(
+            @"^\s*---\s*!u!\d+\s*&(-?\d+)\s*$",
+            RegexOptions.Compiled);
+
+        private static readonly Regex _yamlInlinePPtrRegex = new Regex(
+            @"\{fileID:\s*(-?\d+)(?:,\s*guid:\s*([0-9a-fA-F]{32}))?(?:,\s*type:\s*-?\d+)?\}",
+            RegexOptions.Compiled);
 
         public class ParameterReferenceContext
         {
@@ -66,6 +95,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
 
             // 1. 获取所有已定义的参数
             var definedParameters = controller.parameters.ToDictionary(p => p.name, p => p);
+            var definedParameterNames = new HashSet<string>(definedParameters.Keys, StringComparer.Ordinal);
             var usedParameterNames = new HashSet<string>();
             var typeHintMap = new Dictionary<string, HashSet<AnimatorControllerParameterType>>();
             var referenceMap = new Dictionary<string, List<ParameterReferenceContext>>(StringComparer.Ordinal);
@@ -144,6 +174,21 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
                 AnalyzeStateMachine(layer.stateMachine, $"Layer {i}", RegisterReference);
             }
 
+            // 2.1 补充动画曲线中对 Animator 参数的引用统计
+            RegisterAnimationCurveParameterReferences(
+                controller,
+                definedParameterNames,
+                usedParameterNames,
+                typeHintMap,
+                referenceMap);
+
+            // 2.2 检查控制器 YAML 中是否存在损坏 PPtr
+            var brokenPPtrIssue = BuildBrokenPPtrIssue(controller);
+            if (brokenPPtrIssue != null)
+            {
+                result.Issues.Add(brokenPPtrIssue);
+            }
+
             // 3. 检查无用参数
             foreach (var param in controller.parameters)
             {
@@ -171,7 +216,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
                 {
                     Type = IssueType.TypeMismatch,
                     ParameterName = param.name,
-                    ExpectedType = hints.First(),
+                    ExpectedType = SelectExpectedType(hints),
                     ActualType = param.type
                 };
 
@@ -192,9 +237,261 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
             return result;
         }
 
+        private static AnimatorControllerParameterType SelectExpectedType(HashSet<AnimatorControllerParameterType> hints)
+        {
+            if (hints == null || hints.Count == 0)
+            {
+                return AnimatorControllerParameterType.Float;
+            }
+
+            for (int i = 0; i < _expectedTypePriority.Length; i++)
+            {
+                var candidate = _expectedTypePriority[i];
+                if (hints.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return hints.OrderBy(x => (int)x).First();
+        }
+
+        private static ParameterIssue BuildBrokenPPtrIssue(AnimatorController controller)
+        {
+            if (!TryCollectBrokenPPtrs(controller, out var assetPath, out _, out _, out var brokenLocations))
+                return null;
+
+            if (brokenLocations.Count == 0)
+                return null;
+
+            var issue = new ParameterIssue
+            {
+                Type = IssueType.BrokenPPtr,
+                ParameterName = Path.GetFileName(assetPath)
+            };
+
+            foreach (var location in brokenLocations)
+            {
+                issue.References.Add(new ParameterReferenceContext
+                {
+                    Description = $"第 {location.LineIndex + 1} 行 {location.PropertyLabel}: {location.RawToken}"
+                });
+            }
+
+            return issue;
+        }
+
+        public static bool FixBrokenPPtrs(AnimatorController controller)
+        {
+            if (!TryCollectBrokenPPtrs(controller, out var assetPath, out var absolutePath, out var lines, out var brokenLocations))
+                return false;
+
+            if (brokenLocations.Count == 0)
+                return false;
+
+            var groupedByLine = brokenLocations.GroupBy(x => x.LineIndex);
+            foreach (var group in groupedByLine)
+            {
+                var lineIndex = group.Key;
+                if (lineIndex < 0 || lineIndex >= lines.Length)
+                    continue;
+
+                var line = lines[lineIndex];
+                foreach (var location in group.OrderByDescending(x => x.MatchIndex))
+                {
+                    if (location.MatchIndex < 0 ||
+                        location.MatchLength <= 0 ||
+                        location.MatchIndex + location.MatchLength > line.Length)
+                    {
+                        continue;
+                    }
+
+                    line = line.Remove(location.MatchIndex, location.MatchLength)
+                        .Insert(location.MatchIndex, "{fileID: 0}");
+                }
+
+                lines[lineIndex] = line;
+            }
+
+            try
+            {
+                File.WriteAllLines(absolutePath, lines, new UTF8Encoding(false));
+                AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+                AssetDatabase.SaveAssets();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryCollectBrokenPPtrs(
+            AnimatorController controller,
+            out string assetPath,
+            out string absolutePath,
+            out string[] lines,
+            out List<BrokenPPtrLocation> brokenLocations)
+        {
+            assetPath = string.Empty;
+            absolutePath = string.Empty;
+            lines = Array.Empty<string>();
+            brokenLocations = new List<BrokenPPtrLocation>();
+
+            if (controller == null)
+                return false;
+
+            assetPath = AssetDatabase.GetAssetPath(controller);
+            if (string.IsNullOrEmpty(assetPath))
+                return false;
+
+            absolutePath = GetAbsoluteAssetPath(assetPath);
+            if (string.IsNullOrEmpty(absolutePath) || !File.Exists(absolutePath))
+                return false;
+
+            try
+            {
+                lines = File.ReadAllLines(absolutePath);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (lines.Length == 0 ||
+                lines[0].IndexOf("%YAML", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return true;
+            }
+
+            var localIds = new HashSet<long>();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var headerMatch = _yamlDocumentHeaderRegex.Match(lines[i]);
+                if (headerMatch.Success && long.TryParse(headerMatch.Groups[1].Value, out var localId))
+                {
+                    localIds.Add(localId);
+                }
+            }
+
+            var guidExistenceCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var matches = _yamlInlinePPtrRegex.Matches(line);
+                foreach (Match match in matches)
+                {
+                    if (!match.Success)
+                        continue;
+
+                    if (!long.TryParse(match.Groups[1].Value, out var fileId))
+                        continue;
+
+                    var guid = match.Groups[2].Success ? match.Groups[2].Value : string.Empty;
+                    if (!IsBrokenPPtr(fileId, guid, localIds, guidExistenceCache))
+                        continue;
+
+                    brokenLocations.Add(new BrokenPPtrLocation
+                    {
+                        LineIndex = i,
+                        MatchIndex = match.Index,
+                        MatchLength = match.Length,
+                        RawToken = match.Value,
+                        PropertyLabel = TryExtractPropertyLabel(line, match.Index)
+                    });
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsBrokenPPtr(
+            long fileId,
+            string guid,
+            HashSet<long> localIds,
+            Dictionary<string, bool> guidExistenceCache)
+        {
+            if (fileId == 0)
+                return false;
+
+            if (string.IsNullOrEmpty(guid) || IsZeroGuid(guid))
+            {
+                return localIds == null || !localIds.Contains(fileId);
+            }
+
+            if (IsBuiltinGuid(guid))
+                return false;
+
+            if (!guidExistenceCache.TryGetValue(guid, out var exists))
+            {
+                exists = !string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(guid));
+                guidExistenceCache[guid] = exists;
+            }
+
+            return !exists;
+        }
+
+        private static bool IsZeroGuid(string guid)
+        {
+            if (string.IsNullOrEmpty(guid) || guid.Length != 32)
+                return false;
+
+            for (int i = 0; i < guid.Length; i++)
+            {
+                if (guid[i] != '0')
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsBuiltinGuid(string guid)
+        {
+            return string.Equals(guid, "0000000000000000e000000000000000", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(guid, "0000000000000000f000000000000000", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string TryExtractPropertyLabel(string line, int matchIndex)
+        {
+            if (string.IsNullOrEmpty(line))
+                return "PPtr";
+
+            var keySeparator = line.IndexOf(':');
+            if (keySeparator > 0 && keySeparator < matchIndex)
+            {
+                var key = line.Substring(0, keySeparator).Trim();
+                if (!string.IsNullOrEmpty(key))
+                    return key;
+            }
+
+            return "PPtr";
+        }
+
+        private static string GetAbsoluteAssetPath(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath))
+                return null;
+
+            var projectRoot = Path.GetDirectoryName(Application.dataPath);
+            if (string.IsNullOrEmpty(projectRoot))
+                return null;
+
+            return Path.GetFullPath(Path.Combine(projectRoot, assetPath));
+        }
+
         private static void AnalyzeStateMachine(AnimatorStateMachine stateMachine, string path, ParameterReferenceRegister register)
         {
             if (stateMachine == null) return;
+
+            // StateMachine Behaviours
+            if (stateMachine.behaviours != null)
+            {
+                for (int i = 0; i < stateMachine.behaviours.Length; i++)
+                {
+                    var behaviour = stateMachine.behaviours[i];
+                    AnalyzeBehaviour(behaviour, $"{path} (StateMachine Driver {i})", register);
+                }
+            }
 
             // States
             foreach (var childState in stateMachine.states)
@@ -227,8 +524,155 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
             // Sub State Machines
             foreach (var sub in stateMachine.stateMachines)
             {
-                AnalyzeStateMachine(sub.stateMachine, $"{path}/{sub.stateMachine.name}", register);
+                var subStateMachine = sub.stateMachine;
+                if (subStateMachine != null)
+                {
+                    AnalyzeStateMachine(subStateMachine, $"{path}/{subStateMachine.name}", register);
+                }
             }
+        }
+
+        private static void RegisterAnimationCurveParameterReferences(
+            AnimatorController controller,
+            HashSet<string> definedParameterNames,
+            HashSet<string> usedParameterNames,
+            Dictionary<string, HashSet<AnimatorControllerParameterType>> typeHintMap,
+            Dictionary<string, List<ParameterReferenceContext>> referenceMap)
+        {
+            if (controller == null)
+                return;
+
+            var clips = new HashSet<AnimationClip>();
+            for (int i = 0; i < controller.layers.Length; i++)
+            {
+                var layer = controller.layers[i];
+                if (layer?.stateMachine == null)
+                    continue;
+
+                CollectClipsFromStateMachine(layer.stateMachine, clips);
+            }
+
+            foreach (var clip in clips)
+            {
+                if (clip == null)
+                    continue;
+
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                for (int i = 0; i < bindings.Length; i++)
+                {
+                    var binding = bindings[i];
+                    if (binding.type != typeof(Animator))
+                        continue;
+
+                    if (!TryExtractAnimatorParameterName(binding.propertyName, definedParameterNames, out var parameterName))
+                        continue;
+
+                    usedParameterNames.Add(parameterName);
+
+                    if (!typeHintMap.TryGetValue(parameterName, out var hints))
+                    {
+                        hints = new HashSet<AnimatorControllerParameterType>();
+                        typeHintMap[parameterName] = hints;
+                    }
+                    hints.Add(AnimatorControllerParameterType.Float);
+
+                    if (!referenceMap.TryGetValue(parameterName, out var references))
+                    {
+                        references = new List<ParameterReferenceContext>();
+                        referenceMap[parameterName] = references;
+                    }
+
+                    references.Add(new ParameterReferenceContext
+                    {
+                        Description = $"动画曲线: {clip.name} ({binding.path}/{binding.propertyName})"
+                    });
+                }
+            }
+        }
+
+        private static void CollectClipsFromStateMachine(AnimatorStateMachine stateMachine, HashSet<AnimationClip> clips)
+        {
+            if (stateMachine == null || clips == null)
+                return;
+
+            foreach (var childState in stateMachine.states)
+            {
+                var state = childState.state;
+                if (state == null)
+                    continue;
+
+                CollectClipsFromMotion(state.motion, clips);
+            }
+
+            foreach (var sub in stateMachine.stateMachines)
+            {
+                var subStateMachine = sub.stateMachine;
+                if (subStateMachine != null)
+                {
+                    CollectClipsFromStateMachine(subStateMachine, clips);
+                }
+            }
+        }
+
+        private static void CollectClipsFromMotion(Motion motion, HashSet<AnimationClip> clips)
+        {
+            if (motion == null || clips == null)
+                return;
+
+            if (motion is AnimationClip clip)
+            {
+                clips.Add(clip);
+                return;
+            }
+
+            if (motion is UnityEditor.Animations.BlendTree blendTree)
+            {
+                var children = blendTree.children;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    CollectClipsFromMotion(children[i].motion, clips);
+                }
+            }
+        }
+
+        private static bool TryExtractAnimatorParameterName(
+            string propertyName,
+            HashSet<string> definedParameterNames,
+            out string parameterName)
+        {
+            parameterName = null;
+            if (string.IsNullOrEmpty(propertyName))
+                return false;
+
+            if (definedParameterNames != null && definedParameterNames.Contains(propertyName))
+            {
+                parameterName = propertyName;
+                return true;
+            }
+
+            const string parametersPrefix = "Parameters.";
+            if (propertyName.StartsWith(parametersPrefix, StringComparison.Ordinal))
+            {
+                var candidate = propertyName.Substring(parametersPrefix.Length);
+                if (!string.IsNullOrEmpty(candidate))
+                {
+                    parameterName = candidate;
+                    return true;
+                }
+            }
+
+            const string parameterPrefix = "parameter.";
+            if (propertyName.StartsWith(parameterPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var candidate = propertyName.Substring(parameterPrefix.Length);
+                if (!string.IsNullOrEmpty(candidate))
+                {
+                    parameterName = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void AnalyzeState(AnimatorState state, string path, ParameterReferenceRegister register)
@@ -383,11 +827,11 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
             if (behaviour == null) return;
 
             // Support VRCAvatarParameterDriver
-            if (behaviour.GetType().Name.Contains("VRCAvatarParameterDriver"))
+            if (IsAvatarParameterDriverBehaviour(behaviour))
             {
                 var so = new SerializedObject(behaviour);
                 var paramsProp = so.FindProperty("parameters");
-                if (paramsProp != null)
+                if (paramsProp != null && paramsProp.isArray)
                 {
                     for (int i = 0; i < paramsProp.arraySize; i++)
                     {
@@ -400,18 +844,53 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
                             {
                                 var freshSo = new SerializedObject(behaviour);
                                 var freshParams = freshSo.FindProperty("parameters");
-                                if (index < freshParams.arraySize)
+                                if (freshParams != null && freshParams.isArray && index < freshParams.arraySize)
                                 {
                                     var freshElem = freshParams.GetArrayElementAtIndex(index);
                                     var freshName = freshElem.FindPropertyRelative("name");
-                                    freshName.stringValue = newName;
-                                    freshSo.ApplyModifiedProperties();
+                                    if (freshName != null)
+                                    {
+                                        freshName.stringValue = newName;
+                                        freshSo.ApplyModifiedProperties();
+                                        EditorUtility.SetDirty(behaviour);
+                                    }
+                                }
+                            });
+                        }
+
+                        var sourceProp = elem.FindPropertyRelative("source");
+                        if (sourceProp != null)
+                        {
+                            register(sourceProp.stringValue, $"{path} (Driver Source {index})", null, newName =>
+                            {
+                                var freshSo = new SerializedObject(behaviour);
+                                var freshParams = freshSo.FindProperty("parameters");
+                                if (freshParams != null && freshParams.isArray && index < freshParams.arraySize)
+                                {
+                                    var freshElem = freshParams.GetArrayElementAtIndex(index);
+                                    var freshSource = freshElem.FindPropertyRelative("source");
+                                    if (freshSource != null)
+                                    {
+                                        freshSource.stringValue = newName;
+                                        freshSo.ApplyModifiedProperties();
+                                        EditorUtility.SetDirty(behaviour);
+                                    }
                                 }
                             });
                         }
                     }
                 }
             }
+        }
+
+        private static bool IsAvatarParameterDriverBehaviour(StateMachineBehaviour behaviour)
+        {
+            if (behaviour == null)
+                return false;
+
+            var typeName = behaviour.GetType().Name;
+            return !string.IsNullOrEmpty(typeName) &&
+                   typeName.IndexOf("AvatarParameterDriver", StringComparison.Ordinal) >= 0;
         }
 
         /// <summary>

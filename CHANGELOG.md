@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.0-beta.1] - 2026-05-05
+
+### Added
+
+- Find References：新增资产与场景引用查找工具，支持跨资产和场景搜索目标资产的引用链，并可快速切换搜索目标。
+- Quick Animator Edit（参数模式）：新增参数追踪功能，可追踪指定参数在控制器中的引用位置（Transition、State、BlendTree）以及被写入的位置（Avatar Parameter Driver、Animation Curve、场景组件）。
+
+### Changed
+
+- Quick Animator Edit：清理状态/过渡/BlendTree 面板中的无作用数据与冗余分支，保持现有功能行为不变。
+
+### Fixed
+
+- Material Refit：
+  - 修复 Texture 预览在替换项变更后的临时材质残留问题。
+  - 修复材质保存路径容错不足导致的异常风险。
+  - 补充 shader 为空的保护，避免扫描异常。
+- Sync Main Camera to Scene View：
+  - 修复播放中启用同步时未立即应用缓存姿态的问题。
+  - 修复禁用同步时残留 `SyncCameraComponent` 的问题。
+- Quick Remove Bones：清理无作用调用与冗余包装方法，减少状态维护冗余并保持行为一致。
+
 ## [0.6.1] - 2026-02-09
 
 ### Fixed

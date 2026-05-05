@@ -275,7 +275,7 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
             state.timeParameterActive = true;
             state.timeParameter = data.parameterName;
 #endif
-            SetWriteDefaults(state, data.writeDefaultSetting);
+            SetWriteDefaults(state, writeDefaults);
             stateMachine.defaultState = state;
 
             PersistStateMachineHierarchy(stateMachine, controller);
@@ -544,34 +544,6 @@ namespace MVA.Toolbox.AvatarQuickToggle.Services
         private void AddBlendShapeCurve(AnimationClip clip, string path, string blendShapeName, float value)
         {
             var curve = AnimationCurve.Constant(0f, 0f, value);
-            var binding = new EditorCurveBinding
-            {
-                path = path,
-                type = typeof(SkinnedMeshRenderer),
-                propertyName = "blendShape." + blendShapeName
-            };
-            AnimationUtility.SetEditorCurve(clip, binding, curve);
-        }
-
-        private void AddFloatBlendShapeCurve(AnimationClip clip, string path, string blendShapeName, int direction, bool secondary, float startTime, float endTime, bool useWDOn)
-        {
-            float startValue = direction == 0 ? 0f : 100f;
-            float endValue = direction == 0 ? 100f : 0f;
-            if (secondary)
-            {
-                startValue = direction == 0 ? 0f : 100f;
-                endValue = direction == 0 ? 100f : 0f;
-            }
-
-            var curve = new AnimationCurve
-            {
-                keys = new[]
-                {
-                    new Keyframe(startTime, startValue),
-                    new Keyframe(endTime, endValue)
-                }
-            };
-
             var binding = new EditorCurveBinding
             {
                 path = path,

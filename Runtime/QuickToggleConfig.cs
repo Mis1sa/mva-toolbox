@@ -62,12 +62,14 @@ namespace MVA.Toolbox.AvatarQuickToggle
             // 确保每个 layerName 唯一
             for (int i = 0; i < layerConfigs.Count; i++)
             {
-                if (string.IsNullOrEmpty(layerConfigs[i].layerName)) continue;
+                var baseItem = layerConfigs[i];
+                if (baseItem == null || string.IsNullOrEmpty(baseItem.layerName)) continue;
                 for (int j = i + 1; j < layerConfigs.Count; j++)
                 {
-                    if (layerConfigs[j] != null && layerConfigs[i].layerName == layerConfigs[j].layerName)
+                    var compareItem = layerConfigs[j];
+                    if (compareItem != null && baseItem.layerName == compareItem.layerName)
                     {
-                        layerConfigs[j].layerName += "_1";
+                        compareItem.layerName += "_1";
                     }
 
                 }
@@ -86,8 +88,24 @@ namespace MVA.Toolbox.AvatarQuickToggle
 
         public void UpdateConfiguration(LayerConfig updated)
         {
+            UpdateConfiguration(updated, null);
+        }
+
+        public void UpdateConfiguration(LayerConfig updated, string originalLayerName)
+        {
             if (updated == null) return;
-            var idx = layerConfigs.FindIndex(x => x != null && x.layerName == updated.layerName);
+            int idx = -1;
+
+            if (!string.IsNullOrEmpty(originalLayerName))
+            {
+                idx = layerConfigs.FindIndex(x => x != null && x.layerName == originalLayerName);
+            }
+
+            if (idx < 0)
+            {
+                idx = layerConfigs.FindIndex(x => x != null && x.layerName == updated.layerName);
+            }
+
             if (idx >= 0) layerConfigs[idx] = updated; else layerConfigs.Add(updated);
         }
 

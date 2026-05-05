@@ -21,7 +21,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             Scan,
             Apply,
             Check,
-            Adjust
+            Adjust,
+            Trace
         }
 
         public static bool IsMAParametersControllerModeActive { get; private set; }
@@ -294,6 +295,12 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private List<ParameterIssueUI> _issueUIs = new List<ParameterIssueUI>();
         private bool _unusedSelectAll;
 
+        // Parameter Trace
+        private ParameterTraceService.TraceResult _traceResult;
+        private Vector2 _traceScrollPosition;
+        private int _traceParameterIndex;
+        private AnimatorController _traceLastController;
+
         private class ParameterIssueUI
         {
             public ParameterCheckService.ParameterIssue Issue;
@@ -302,6 +309,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             public bool RemoveUnused;
             public bool ApplyTypeFix;
             public AnimatorControllerParameterType TypeFixTarget;
+            public bool FixBrokenPPtr;
         }
 
         private enum AdjustOperation
@@ -354,8 +362,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
 
             bool targetIsControllerAsset = _context.TargetObject is AnimatorController;
             var modeLabels = targetIsControllerAsset
-                ? new[] { "添加到 Parameters", "参数检查", "参数调整" }
-                : new[] { "添加参数到控制器", "添加到 Parameters", "参数检查", "参数调整" };
+                ? new[] { "添加到 Parameters", "参数检查", "参数调整", "参数追踪" }
+                : new[] { "添加参数到控制器", "添加到 Parameters", "参数检查", "参数调整", "参数追踪" };
 
             int selectedIndex = targetIsControllerAsset
                 ? Mathf.Clamp((int)_mode - 1, 0, modeLabels.Length - 1)
@@ -403,9 +411,209 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                 case ParameterMode.Adjust:
                     DrawAdjustUI();
                     break;
+                case ParameterMode.Trace:
+                    DrawTraceUI();
+                    break;
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawBrokenPPtrRow(ParameterIssueUI ui)
+        {
+            var issue = ui.Issue;
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField($"资源: {issue.ParameterName}", EditorStyles.boldLabel);
+
+            int maxRefs = Mathf.Min(issue.References.Count, 5);
+            for (int i = 0; i < maxRefs; i++)
+            {
+                EditorGUILayout.LabelField($"• {issue.References[i].Description}", EditorStyles.miniLabel);
+            }
+            if (issue.References.Count > 5)
+            {
+                EditorGUILayout.LabelField($"... 以及其他 {issue.References.Count - 5} 处", EditorStyles.miniLabel);
+            }
+
+            ui.FixBrokenPPtr = EditorGUILayout.ToggleLeft("修复（将损坏引用置为 {fileID: 0}）", ui.FixBrokenPPtr);
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawTraceUI()
+        {
+            var controller = _context.SelectedController;
+            if (controller == null)
+            {
+                EditorGUILayout.HelpBox("请先选择动画控制器。", MessageType.Warning);
+                return;
+            }
+
+            var parameters = controller.parameters ?? System.Array.Empty<AnimatorControllerParameter>();
+            if (parameters.Length == 0)
+            {
+                EditorGUILayout.HelpBox("当前动画控制器中没有参数。", MessageType.Info);
+                return;
+            }
+
+            if (_traceLastController != controller)
+            {
+                _traceLastController = controller;
+                _traceParameterIndex = 0;
+                _traceResult = null;
+            }
+
+            _traceParameterIndex = Mathf.Clamp(_traceParameterIndex, 0, parameters.Length - 1);
+            var parameterNames = parameters.Select(x => x.name).ToArray();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("参数", GUILayout.Width(80f));
+            _traceParameterIndex = EditorGUILayout.Popup(_traceParameterIndex, parameterNames);
+            EditorGUILayout.EndHorizontal();
+
+            var sceneRoot = _context.TargetObject as GameObject;
+            if (sceneRoot == null)
+            {
+                EditorGUILayout.HelpBox("当前目标是控制器资产，仅分析该控制器。", MessageType.Info);
+            }
+
+            if (GUILayout.Button("开始追踪", GUILayout.Height(30f)))
+            {
+                string parameterName = parameters[_traceParameterIndex].name;
+                _traceResult = ParameterTraceService.Execute(
+                    controller,
+                    parameterName,
+                    sceneRoot);
+            }
+
+            if (_traceResult == null)
+            {
+                EditorGUILayout.HelpBox("选择参数后点击“开始追踪”。", MessageType.Info);
+                return;
+            }
+
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.LabelField(
+                $"参数: {_traceResult.ParameterName} | 引用: {_traceResult.References.Count} | 修改: {_traceResult.Modifications.Count}",
+                EditorStyles.boldLabel);
+
+            if (!_traceResult.HasAny)
+            {
+                EditorGUILayout.HelpBox("未找到该参数的引用或修改来源。", MessageType.Info);
+                return;
+            }
+
+            _traceScrollPosition = EditorGUILayout.BeginScrollView(_traceScrollPosition, GUILayout.Height(360f));
+            DrawTraceGroup("引用（读取）", _traceResult.References, true);
+            EditorGUILayout.Space(6f);
+            DrawTraceGroup("修改（写入）", _traceResult.Modifications, false);
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawTraceGroup(string title, List<ParameterTraceService.TraceEntry> entries, bool isReference)
+        {
+            int count = entries != null ? entries.Count : 0;
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField($"{title} ({count})", EditorStyles.boldLabel);
+
+            if (entries == null || entries.Count == 0)
+            {
+                EditorGUILayout.HelpBox("无记录。", MessageType.Info);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                if (isReference)
+                {
+                    DrawTraceReferenceEntry(entry);
+                }
+                else
+                {
+                    DrawTraceModificationEntry(entry);
+                }
+                EditorGUILayout.EndVertical();
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawTraceReferenceEntry(ParameterTraceService.TraceEntry entry)
+        {
+            EditorGUILayout.LabelField(entry.Description, EditorStyles.boldLabel);
+
+            DrawTraceLabel("层级", entry.LayerName);
+
+            if (entry.SourceKind == ParameterTraceService.TraceSourceKind.TransitionCondition)
+            {
+                DrawTraceLabel("源状态", entry.SourceState);
+                DrawTraceLabel("目标状态", entry.DestinationState);
+            }
+            else
+            {
+                DrawTraceLabel("源状态", entry.SourceState);
+            }
+
+            if (!string.IsNullOrEmpty(entry.ComponentName))
+            {
+                DrawTraceLabel("组件名", entry.ComponentName);
+            }
+
+            if (entry.SourceKind == ParameterTraceService.TraceSourceKind.BlendTreeParameter)
+            {
+                DrawTraceLabel("混合树", entry.BlendTreePath);
+            }
+        }
+
+        private void DrawTraceModificationEntry(ParameterTraceService.TraceEntry entry)
+        {
+            EditorGUILayout.LabelField(entry.Description, EditorStyles.boldLabel);
+
+            if (entry.SourceKind == ParameterTraceService.TraceSourceKind.AnimationCurve)
+            {
+                if (entry.RelatedObject != null)
+                {
+                    EditorGUILayout.ObjectField("动画剪辑", entry.RelatedObject, typeof(AnimationClip), false);
+                }
+
+                return;
+            }
+
+            if (entry.SourceKind == ParameterTraceService.TraceSourceKind.AvatarParameterDriverTarget)
+            {
+                DrawTraceLabel("层级", entry.LayerName);
+                DrawTraceLabel("状态", entry.SourceState);
+                DrawTraceLabel("组件名", entry.ComponentName);
+
+                return;
+            }
+
+            if (entry.SourceKind == ParameterTraceService.TraceSourceKind.SceneComponent)
+            {
+                DrawTraceLabel("层级（Hierarchy）", entry.HierarchyPath);
+                DrawTraceLabel("组件名", entry.ComponentName);
+
+                return;
+            }
+
+            DrawTraceLabel("层级", entry.LayerName);
+            DrawTraceLabel("状态", entry.SourceState);
+            if (!string.IsNullOrEmpty(entry.ComponentName))
+            {
+                DrawTraceLabel("组件名", entry.ComponentName);
+            }
+        }
+
+        private static void DrawTraceLabel(string label, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+
+            EditorGUILayout.LabelField(label + ": " + value, EditorStyles.miniLabel);
         }
 
         private void DrawScanUI()
@@ -957,6 +1165,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             var missingIssues = _issueUIs.Where(u => u.Issue.Type == ParameterCheckService.IssueType.MissingReference).ToList();
             var unusedIssues = _issueUIs.Where(u => u.Issue.Type == ParameterCheckService.IssueType.UnusedParameter).ToList();
             var mismatchIssues = _issueUIs.Where(u => u.Issue.Type == ParameterCheckService.IssueType.TypeMismatch).ToList();
+            var brokenPPtrIssues = _issueUIs.Where(u => u.Issue.Type == ParameterCheckService.IssueType.BrokenPPtr).ToList();
 
             _checkScrollPosition = EditorGUILayout.BeginScrollView(_checkScrollPosition);
 
@@ -1003,6 +1212,18 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     DrawTypeMismatchRow(ui);
                 }
                 EditorGUILayout.EndVertical();
+                EditorGUILayout.Space(8f);
+            }
+
+            if (brokenPPtrIssues.Count > 0)
+            {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField("Broken PPtr", EditorStyles.boldLabel);
+                foreach (var ui in brokenPPtrIssues)
+                {
+                    DrawBrokenPPtrRow(ui);
+                }
+                EditorGUILayout.EndVertical();
             }
 
             EditorGUILayout.EndScrollView();
@@ -1032,7 +1253,8 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     SelectedExistingParamIndex = 0,
                     RemoveUnused = false,
                     ApplyTypeFix = false,
-                    TypeFixTarget = issue.ExpectedType ?? issue.ActualType ?? AnimatorControllerParameterType.Float
+                    TypeFixTarget = issue.ExpectedType ?? issue.ActualType ?? AnimatorControllerParameterType.Float,
+                    FixBrokenPPtr = issue.Type == ParameterCheckService.IssueType.BrokenPPtr
                 };
                 _issueUIs.Add(ui);
             }
@@ -1172,6 +1394,19 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     continue;
 
                 if (ParameterCheckService.FixTypeMismatch(_context.SelectedController, ui.Issue, ui.TypeFixTarget))
+                {
+                    fixCount++;
+                }
+            }
+
+            // Broken PPtr
+            bool shouldFixBrokenPPtr = _issueUIs.Any(u =>
+                u.Issue.Type == ParameterCheckService.IssueType.BrokenPPtr &&
+                u.FixBrokenPPtr);
+
+            if (shouldFixBrokenPPtr)
+            {
+                if (ParameterCheckService.FixBrokenPPtrs(_context.SelectedController))
                 {
                     fixCount++;
                 }

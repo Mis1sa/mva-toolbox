@@ -320,14 +320,14 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
         private static void RemoveInBehaviour(StateMachineBehaviour behaviour, string parameterName)
         {
             if (behaviour == null) return;
-            if (!behaviour.GetType().Name.Contains("VRCAvatarParameterDriver"))
+            if (!IsAvatarParameterDriverBehaviour(behaviour))
             {
                 return;
             }
 
             var so = new SerializedObject(behaviour);
             var parametersProp = so.FindProperty("parameters");
-            if (parametersProp == null)
+            if (parametersProp == null || !parametersProp.isArray)
             {
                 return;
             }
@@ -453,14 +453,14 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
         private static void RenameInBehaviour(StateMachineBehaviour behaviour, string oldName, string newName)
         {
             if (behaviour == null) return;
-            if (!behaviour.GetType().Name.Contains("VRCAvatarParameterDriver"))
+            if (!IsAvatarParameterDriverBehaviour(behaviour))
             {
                 return;
             }
 
             var so = new SerializedObject(behaviour);
             var parametersProp = so.FindProperty("parameters");
-            if (parametersProp == null)
+            if (parametersProp == null || !parametersProp.isArray)
             {
                 return;
             }
@@ -513,6 +513,17 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
             Action<AnimatorTransitionBase> transitionAction,
             Action<StateMachineBehaviour> behaviourAction)
         {
+            if (stateMachine == null)
+                return;
+
+            if (stateMachine.behaviours != null)
+            {
+                foreach (var behaviour in stateMachine.behaviours)
+                {
+                    behaviourAction?.Invoke(behaviour);
+                }
+            }
+
             foreach (var childState in stateMachine.states)
             {
                 var state = childState.state;
@@ -552,6 +563,16 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Parameter
                     TraverseStateMachine(subStateMachine, stateAction, transitionAction, behaviourAction);
                 }
             }
+        }
+
+        private static bool IsAvatarParameterDriverBehaviour(StateMachineBehaviour behaviour)
+        {
+            if (behaviour == null)
+                return false;
+
+            var typeName = behaviour.GetType().Name;
+            return !string.IsNullOrEmpty(typeName) &&
+                   typeName.IndexOf("AvatarParameterDriver", StringComparison.Ordinal) >= 0;
         }
     }
 }

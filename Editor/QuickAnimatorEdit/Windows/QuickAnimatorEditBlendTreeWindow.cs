@@ -56,7 +56,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         // Edit Mode
         private AnimatorController _lastEditController;
         private int _lastEditLayerIndex = -1;
-        private readonly List<(string path, AnimatorState state)> _editStates = new List<(string, AnimatorState)>();
+        private readonly List<AnimatorState> _editStates = new List<AnimatorState>();
         private string[] _editStateDisplayNames = System.Array.Empty<string>();
         private int _selectedEditStateIndex;
         private readonly List<BlendTreeNodeInfo> _editBlendTrees = new List<BlendTreeNodeInfo>();
@@ -299,9 +299,9 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                 return;
             }
 
-            CollectBlendTreeStates(layer.stateMachine, layer.name, _editStates);
+            CollectBlendTreeStates(layer.stateMachine, _editStates);
             _editStateDisplayNames = _editStates
-                .Select(x => x.state != null ? x.state.name : string.Empty)
+                .Select(x => x != null ? x.name : string.Empty)
                 .ToArray();
 
             RefreshEditBlendTreeListForState(_editStates.Count > 0 ? 0 : -1);
@@ -320,7 +320,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                 return;
             }
 
-            var (_, state) = _editStates[stateIndex];
+            var state = _editStates[stateIndex];
             if (state?.motion is UnityEditor.Animations.BlendTree rootTree)
             {
                 CollectBlendTreesFromState(
@@ -337,7 +337,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             RefreshMoveTargetList(GetSelectedNode());
         }
 
-        private void CollectBlendTreeStates(AnimatorStateMachine stateMachine, string parentPath, List<(string path, AnimatorState state)> result)
+        private void CollectBlendTreeStates(AnimatorStateMachine stateMachine, List<AnimatorState> result)
         {
             if (stateMachine == null) return;
 
@@ -346,15 +346,13 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                 var state = child.state;
                 if (state?.motion is UnityEditor.Animations.BlendTree)
                 {
-                    string statePath = AnimatorPathUtility.Combine(parentPath, state.name);
-                    result.Add((statePath, state));
+                    result.Add(state);
                 }
             }
 
             foreach (var sub in stateMachine.stateMachines)
             {
-                string subPath = AnimatorPathUtility.Combine(parentPath, sub.stateMachine.name);
-                CollectBlendTreeStates(sub.stateMachine, subPath, result);
+                CollectBlendTreeStates(sub.stateMachine, result);
             }
         }
 

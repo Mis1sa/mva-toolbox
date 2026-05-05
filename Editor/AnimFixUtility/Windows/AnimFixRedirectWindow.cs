@@ -397,7 +397,7 @@ namespace MVA.Toolbox.AnimFixUtility.Windows
 
                             if (propertyGroup.AllFixed)
                             {
-                                GUILayout.Label("待修复", _fixedStatusStyle);
+                                GUILayout.Label("已修复", _fixedStatusStyle);
                             }
                             else
                             {

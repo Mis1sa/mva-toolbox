@@ -33,6 +33,8 @@ namespace MVA.Toolbox.MaterialRefit.Services
         readonly Dictionary<Material, Material> _tempMaterialInstances = new Dictionary<Material, Material>();
         readonly Dictionary<Material, Material> _tempToOriginal = new Dictionary<Material, Material>();
 
+        const string DefaultSaveFolder = "Assets/MVA Toolbox/MR";
+
         bool _extraCreateMaterials = true;
         string _saveFolderRelative = "Assets/MVA Toolbox/MR/";
         string _materialSuffix = string.Empty;
@@ -60,7 +62,7 @@ namespace MVA.Toolbox.MaterialRefit.Services
         public string SaveFolderRelative
         {
             get => _saveFolderRelative;
-            set => _saveFolderRelative = value;
+            set => _saveFolderRelative = value ?? string.Empty;
         }
 
         public string MaterialSuffix
@@ -246,6 +248,11 @@ namespace MVA.Toolbox.MaterialRefit.Services
                 }
 
                 var shader = m.shader;
+                if (shader == null)
+                {
+                    continue;
+                }
+
                 int count = ShaderUtil.GetPropertyCount(shader);
                 for (int i = 0; i < count; i++)
                 {
@@ -279,6 +286,19 @@ namespace MVA.Toolbox.MaterialRefit.Services
             }
 
             var renderers = _targetRoot.GetComponentsInChildren<Renderer>(true);
+
+            bool anyReplacement = _materialReplacements.Any(kv => kv.Key != null && kv.Value != null && kv.Value != kv.Key);
+            if (!anyReplacement)
+            {
+                if (_hasPreviewChanges)
+                {
+                    RestoreRendererMaterialsFromBackup(false);
+                    DestroyTempMaterialInstances();
+                    _hasPreviewChanges = false;
+                }
+
+                return;
+            }
 
             if (_hasPreviewChanges)
             {
@@ -328,7 +348,7 @@ namespace MVA.Toolbox.MaterialRefit.Services
                 }
             }
 
-            _hasPreviewChanges = _materialReplacements.Count > 0;
+            _hasPreviewChanges = anyReplacement;
             _applied = false;
         }
 
@@ -523,6 +543,12 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
                     if (!materialWillChange)
                     {
+                        if (_tempToOriginal.TryGetValue(slotMat, out var tempOrig) && tempOrig == orig)
+                        {
+                            mats[i] = orig;
+                            changed = true;
+                        }
+
                         continue;
                     }
 
@@ -533,12 +559,23 @@ namespace MVA.Toolbox.MaterialRefit.Services
                         _tempToOriginal[temp] = orig;
                     }
 
+                    temp.CopyPropertiesFromMaterial(orig);
+
                     foreach (var p in props)
                     {
                         var srcTex = p.Value;
-                        if (srcTex != null && _textureReplacements.TryGetValue(srcTex, out var cand) && cand != null && cand != srcTex)
+                        if (srcTex == null)
+                        {
+                            continue;
+                        }
+
+                        if (_textureReplacements.TryGetValue(srcTex, out var cand) && cand != null && cand != srcTex)
                         {
                             temp.SetTexture(p.Key, cand);
+                        }
+                        else
+                        {
+                            temp.SetTexture(p.Key, srcTex);
                         }
                     }
 
@@ -567,6 +604,11 @@ namespace MVA.Toolbox.MaterialRefit.Services
                 }
 
                 var shader = m.shader;
+                if (shader == null)
+                {
+                    continue;
+                }
+
                 int count = ShaderUtil.GetPropertyCount(shader);
                 for (int i = 0; i < count; i++)
                 {
@@ -610,18 +652,22 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
             if (_extraCreateMaterials)
             {
-                string baseFolder = _saveFolderRelative.TrimEnd('/');
-                if (!AssetDatabase.IsValidFolder(baseFolder))
+                string baseFolder = NormalizeSaveFolder(_saveFolderRelative);
+                _saveFolderRelative = baseFolder + "/";
+
+                if (!CreateAssetFolderIfNeeded(baseFolder))
                 {
-                    CreateAssetFolderIfNeeded(baseFolder);
+                    EditorUtility.DisplayDialog("路径错误", "材质保存路径无效，请选择 Assets 目录下的文件夹。", "确定");
+                    return;
                 }
 
                 // 每次应用时在当前保存路径下创建一个以时间戳命名的子文件夹，避免不同批次资源覆盖
                 string timeFolderName = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string targetFolder = baseFolder + "/" + timeFolderName;
-                if (!AssetDatabase.IsValidFolder(targetFolder))
+                if (!CreateAssetFolderIfNeeded(targetFolder))
                 {
-                    CreateAssetFolderIfNeeded(targetFolder);
+                    EditorUtility.DisplayDialog("路径错误", "无法创建材质保存目录，请检查保存路径。", "确定");
+                    return;
                 }
 
                 var materialCopies = new Dictionary<Material, Material>();
@@ -749,17 +795,72 @@ namespace MVA.Toolbox.MaterialRefit.Services
             EditorSceneManager.MarkAllScenesDirty();
         }
 
-        void CreateAssetFolderIfNeeded(string relPath)
+        static string NormalizeSaveFolder(string input)
         {
+            string rootFolder = input;
+            if (!string.IsNullOrEmpty(rootFolder))
+            {
+                rootFolder = rootFolder.Trim().Replace("\\", "/");
+            }
+
+            while (!string.IsNullOrEmpty(rootFolder) && rootFolder.EndsWith("/", StringComparison.Ordinal))
+            {
+                rootFolder = rootFolder.Substring(0, rootFolder.Length - 1);
+            }
+
+            if (string.IsNullOrEmpty(rootFolder) ||
+                !(string.Equals(rootFolder, "Assets", StringComparison.OrdinalIgnoreCase) ||
+                  rootFolder.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)))
+            {
+                rootFolder = DefaultSaveFolder;
+            }
+
+            return rootFolder;
+        }
+
+        bool CreateAssetFolderIfNeeded(string relPath)
+        {
+            if (string.IsNullOrWhiteSpace(relPath))
+            {
+                return false;
+            }
+
+            relPath = relPath.Trim().Replace("\\", "/");
+            while (relPath.EndsWith("/", StringComparison.Ordinal))
+            {
+                relPath = relPath.Substring(0, relPath.Length - 1);
+            }
+
             if (AssetDatabase.IsValidFolder(relPath))
             {
-                return;
+                return true;
+            }
+
+            if (!(string.Equals(relPath, "Assets", StringComparison.OrdinalIgnoreCase) ||
+                  relPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
             }
 
             string[] parts = relPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                return false;
+            }
+
             string cur = parts[0];
+            if (!string.Equals(cur, "Assets", StringComparison.OrdinalIgnoreCase) || !AssetDatabase.IsValidFolder(cur))
+            {
+                return false;
+            }
+
             for (int i = 1; i < parts.Length; i++)
             {
+                if (string.IsNullOrEmpty(parts[i]))
+                {
+                    continue;
+                }
+
                 string next = cur + "/" + parts[i];
                 if (!AssetDatabase.IsValidFolder(next))
                 {
@@ -768,6 +869,8 @@ namespace MVA.Toolbox.MaterialRefit.Services
 
                 cur = next;
             }
+
+            return AssetDatabase.IsValidFolder(relPath);
         }
 
         string MakeSafeFilename(string name)

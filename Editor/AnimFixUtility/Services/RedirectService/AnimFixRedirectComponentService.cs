@@ -36,6 +36,26 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
         // 聚合后的组件级快照
         readonly List<ConstraintComponentSnapshot> _constraintComponents = new List<ConstraintComponentSnapshot>();
 
+        static Transform ResolveTransformByPath(Transform root, string path)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+
+            if (path == null)
+            {
+                return null;
+            }
+
+            if (path.Length == 0)
+            {
+                return root;
+            }
+
+            return root.Find(path);
+        }
+
         public IReadOnlyList<ConstraintBindingInfo> ConstraintBindings => _constraintBindings;
         public IReadOnlyList<ConstraintComponentSnapshot> ConstraintComponents => _constraintComponents;
 
@@ -91,7 +111,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                         continue;
                     }
 
-                    var targetTransform = rootTransform.Find(binding.path);
+                    var targetTransform = ResolveTransformByPath(rootTransform, binding.path);
                     GameObject go = targetTransform != null ? targetTransform.gameObject : null;
                     bool hasComponent = go != null && go.GetComponent(binding.type) != null;
 

@@ -1386,29 +1386,6 @@ AfterParameterPopup: ;
             return ToolboxUtils.GetAvailableBlendShapeNames(go);
         }
 
-        private string NextUnusedBlendShape(GameObject go, string current)
-        {
-            var names = GetBlendShapeNames(go);
-            foreach (var n in names)
-            {
-                if (string.IsNullOrEmpty(n) || n == current || n == "(None)") continue;
-                bool used = false;
-                foreach (var it in boolTargets)
-                    if (it.targetObject == go && it.blendShapeName == n) { used = true; break; }
-                foreach (var grp in intGroups)
-                    foreach (var it in grp.targetItems)
-                        if (it.targetObject == go && it.blendShapeName == n) { used = true; break; }
-                foreach (var it in floatTargets)
-                {
-                    if (it.targetObject != go) continue;
-                    if (it.blendShapeName == n) { used = true; break; }
-                    if (it.splitBlendShape && it.secondaryBlendShapeName == n) { used = true; break; }
-                }
-                if (!used) return n;
-            }
-            return null;
-        }
-
         private string NextUnusedBlendShapeWithinList(GameObject go, string current, List<TargetItem> list, bool includeSecondary = false)
         {
             if (go == null || list == null) return null;
@@ -1735,15 +1712,22 @@ AfterParameterPopup: ;
         {
             var config = GatherConfiguration();
             var workflow = new DirectApplyWorkflow(config);
-            workflow.Execute();
+            bool applySucceeded = workflow.Execute();
 
             // 在编辑模式下，“直接修改”等同于“应用并移除”：应用后从配置脚本中移除当前项目
-            if (isEditingConfigEntry && loadedConfigComponent != null && !string.IsNullOrEmpty(lockedLayerName))
+            if (applySucceeded &&
+                isEditingConfigEntry &&
+                loadedConfigComponent != null &&
+                !string.IsNullOrEmpty(lockedLayerName))
             {
                 loadedConfigComponent.RemoveConfiguration(lockedLayerName);
                 ExitEditFromConfig();
                 LoadFromConfig(loadedConfigComponent);
                 ShowNotification(new GUIContent("已应用并从配置脚本中移除"));
+            }
+            else if (!applySucceeded)
+            {
+                ShowNotification(new GUIContent("应用失败，请查看控制台日志"));
             }
         }
 
@@ -1778,20 +1762,10 @@ AfterParameterPopup: ;
         {
             if (!isEditingConfigEntry || loadedConfigComponent == null) return;
             var entry = MapUIToEntry();
-            loadedConfigComponent.UpdateConfiguration(entry);
+            loadedConfigComponent.UpdateConfiguration(entry, lockedLayerName);
+            lockedLayerName = entry.layerName;
             LoadFromConfig(loadedConfigComponent);
             ShowNotification(new GUIContent("已更新配置项"));
-        }
-
-        private void OnApplyAndRemoveButtonClick()
-        {
-            OnApplyButtonClick();
-            if (!string.IsNullOrEmpty(lockedLayerName) && loadedConfigComponent != null)
-            {
-                loadedConfigComponent.RemoveConfiguration(lockedLayerName);
-                ExitEditFromConfig();
-                LoadFromConfig(loadedConfigComponent);
-            }
         }
 
         private void LoadFromConfig(QuickToggleConfig config)
@@ -1979,13 +1953,6 @@ AfterParameterPopup: ;
                 trimmed = trimmed.Substring(0, trimmed.Length - 1);
 
             return string.IsNullOrEmpty(trimmed) ? ToolboxUtils.GetAqtRootFolder() : trimmed;
-        }
-
-        private string BuildFinalClipFolder()
-        {
-            string root = NormalizeClipRootPath(clipSavePath);
-            string segment = string.IsNullOrWhiteSpace(layerName) ? "Layer" : layerName;
-            return ToolboxUtils.BuildAqtLayerFolder(root, segment);
         }
 
         private void SetClipSaveRootFromConfig(string storedPath)

@@ -43,7 +43,6 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Transition
             public int intValue;
             public bool boolValue;
             public AnimatorConditionMode mode;
-            public bool isGlobalOverride;
         }
 
         /// <summary>

@@ -40,7 +40,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
 
             Transform rootTransform = controllerRoot;
 
-            _componentService.BuildSnapshot(_targetRoot, clipsToProcess);
+            _componentService.BuildSnapshot(controllerRoot != null ? controllerRoot.gameObject : _targetRoot, clipsToProcess);
 
             AddInitialMissingComponents(rootTransform, uniqueMissingGroupMap);
 
@@ -53,7 +53,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                 foreach (var binding in allBindings)
                 {
                     string groupName = GetCanonicalGroupName(binding.propertyName, binding.type);
-                    Transform targetTransform = rootTransform.Find(binding.path);
+                    Transform targetTransform = ResolveTransformByPath(rootTransform, binding.path);
 
                     if (targetTransform != null)
                     {
@@ -156,7 +156,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                 missing.CurrentPath = null;
                 missing.OwnerDeleted = false;
 
-                if (string.IsNullOrEmpty(missing.OldPath))
+                if (missing.OldPath == null)
                 {
                     continue;
                 }
@@ -175,7 +175,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                     else
                     {
                         // 当不存在对应的 PathChangeGroup 时，根据当前层级是否还能找到 OldPath 来判断是否已被删除。
-                        var currentTransform = animatorRoot.Find(missing.OldPath);
+                        var currentTransform = ResolveTransformByPath(animatorRoot, missing.OldPath);
                         if (currentTransform == null)
                         {
                             missing.OwnerDeleted = true;
@@ -202,7 +202,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
             for (int i = _missingGroups.Count - 1; i >= 0; i--)
             {
                 var group = _missingGroups[i];
-                var currentTransform = animatorRoot.Find(group.OldPath);
+                var currentTransform = ResolveTransformByPath(animatorRoot, group.OldPath);
                 if (currentTransform == null)
                 {
                     continue;
@@ -344,7 +344,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                                 AnimationUtility.SetEditorCurve(sourceClip, oldBinding, null);
                             }
 
-                            if (!group.IsDeleted && !string.IsNullOrEmpty(group.NewPath))
+                            if (!group.IsDeleted && group.NewPath != null)
                             {
                                 var newBinding = new EditorCurveBinding
                                 {
@@ -623,14 +623,14 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                     {
                         currentTransform = currentObject.transform;
                     }
-                    else if (!string.IsNullOrEmpty(pathGroup.NewPath))
+                    else
                     {
-                        currentTransform = animatorRoot.Find(pathGroup.NewPath);
+                        currentTransform = ResolveTransformByPath(animatorRoot, pathGroup.NewPath);
                     }
                 }
                 else
                 {
-                    currentTransform = animatorRoot.Find(info.Path);
+                    currentTransform = ResolveTransformByPath(animatorRoot, info.Path);
                 }
 
                 if (currentTransform == null)
@@ -711,7 +711,7 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
                     continue;
                 }
 
-                var currentTransform = animatorRoot.Find(info.Path);
+                var currentTransform = ResolveTransformByPath(animatorRoot, info.Path);
                 if (currentTransform == null)
                 {
                     // 该路径整体不存在时，由现有路径缺失逻辑处理
@@ -788,12 +788,12 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
 
             foreach (var group in _missingGroups.ToList())
             {
-                if (string.IsNullOrEmpty(group.OldPath))
+                if (group.OldPath == null)
                 {
                     continue;
                 }
 
-                var currentTransform = animatorRoot.Find(group.OldPath);
+                var currentTransform = ResolveTransformByPath(animatorRoot, group.OldPath);
                 if (currentTransform == null)
                 {
                     // 路径本身缺失的情况仍由现有路径级逻辑处理
@@ -878,6 +878,26 @@ namespace MVA.Toolbox.AnimPathRedirect.Services
             }
 
             return null;
+        }
+
+        static Transform ResolveTransformByPath(Transform root, string path)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+
+            if (path == null)
+            {
+                return null;
+            }
+
+            if (path.Length == 0)
+            {
+                return root;
+            }
+
+            return root.Find(path);
         }
 
         bool ValidateFixTargetComponents(UnityEngine.Object fixTarget, List<Type> requiredTypes)

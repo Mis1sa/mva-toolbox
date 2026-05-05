@@ -237,7 +237,6 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private AnimatorController _lastController;
         private int _lastLayerIndex = -1;
         private List<string> _displayPaths = new List<string>();  // 用于UI显示的路径
-        private List<string> _actualPaths = new List<string>();    // 用于查找的实际路径
         private Dictionary<string, string> _displayToActualPath = new Dictionary<string, string>();  // 显示路径到实际路径的映射
         private Dictionary<string, bool> _isStateMachineMap = new Dictionary<string, bool>();  // 记录是否为子状态机
         private Dictionary<string, AnimatorState> _stateByDisplayPath = new Dictionary<string, AnimatorState>();  // 显示路径到状态的映射
@@ -344,7 +343,6 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private void RefreshStateList(AnimatorControllerLayer layer)
         {
             _displayPaths.Clear();
-            _actualPaths.Clear();
             _displayToActualPath.Clear();
             _isStateMachineMap.Clear();
             _stateByDisplayPath.Clear();
@@ -358,7 +356,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     string.Empty, 
                     string.Empty, 
                     _displayPaths, 
-                    _actualPaths, 
+                    null, 
                     _displayToActualPath, 
                     _stateByDisplayPath, 
                     _stateMachineByDisplayPath, 
@@ -1147,8 +1145,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                         floatValue = cond.floatValue,
                         intValue = cond.intValue,
                         boolValue = cond.boolValue,
-                        mode = cond.mode,
-                        isGlobalOverride = cond.isGlobalOverride
+                        mode = cond.mode
                     });
                 }
 
@@ -1180,8 +1177,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     floatValue = cond.floatValue,
                     intValue = cond.intValue,
                     boolValue = cond.boolValue,
-                    mode = cond.mode,
-                    isGlobalOverride = cond.isGlobalOverride
+                    mode = cond.mode
                 });
             }
 

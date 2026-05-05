@@ -550,9 +550,15 @@ namespace MVA.Toolbox.AnimFixUtility.Services
 
         private GameObject ResolveTargetGameObject(string relativePath)
         {
-            if (string.IsNullOrEmpty(relativePath))
+            if (relativePath == null)
             {
                 return null;
+            }
+
+            if (relativePath.Length == 0)
+            {
+                var root = _activeControllerRoot ?? (_context.TargetRoot != null ? _context.TargetRoot.transform : null);
+                return root != null ? root.gameObject : null;
             }
 
             var triedRoots = new HashSet<Transform>();

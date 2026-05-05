@@ -27,7 +27,6 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private AnimatorController _lastController;
         private int _lastLayerIndex = -1;
         private List<string> _displayPaths = new List<string>();  // 用于UI显示的路径（使用 " > " 分隔）
-        private List<string> _actualPaths = new List<string>();    // 用于查找的实际路径（已转义）
         private Dictionary<string, string> _displayToActualPath = new Dictionary<string, string>();  // 显示路径到实际路径的映射
         private Dictionary<string, AnimatorState> _stateByDisplayPath = new Dictionary<string, AnimatorState>();
 
@@ -120,7 +119,6 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         private void RefreshStateList(AnimatorControllerLayer layer)
         {
             _displayPaths.Clear();
-            _actualPaths.Clear();
             _displayToActualPath.Clear();
             _stateByDisplayPath.Clear();
 
@@ -132,7 +130,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                     string.Empty,
                     string.Empty,
                     _displayPaths,
-                    _actualPaths,
+                    null,
                     _displayToActualPath, // displayToActualPath
                     _stateByDisplayPath,
                     null, // stateMachineByDisplayPath
@@ -156,7 +154,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             EditorGUILayout.LabelField("分割状态", EditorStyles.boldLabel);
 
             // 状态选择
-            DrawSplitStateSelection(layer);
+            DrawSplitStateSelection();
 
             GUILayout.Space(4f);
 
@@ -172,7 +170,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             EditorGUILayout.EndVertical();
         }
 
-        private void DrawSplitStateSelection(AnimatorControllerLayer layer)
+        private void DrawSplitStateSelection()
         {
             if (_displayPaths.Count == 0)
             {
@@ -301,9 +299,9 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         /// <summary>
         /// 获取状态的父状态机路径
         /// </summary>
-        private string GetStateParentPath(AnimatorState targetState, AnimatorStateMachine rootStateMachine)
+        private string GetStateParentPath(AnimatorState targetState)
         {
-            if (targetState == null || rootStateMachine == null) return null;
+            if (targetState == null) return null;
             
             foreach (var entry in _displayToActualPath)
             {
@@ -325,11 +323,11 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
         /// <summary>
         /// 格式化状态名称，添加父路径信息
         /// </summary>
-        private string FormatStateNameWithPath(AnimatorState state, AnimatorStateMachine rootStateMachine)
+        private string FormatStateNameWithPath(AnimatorState state)
         {
             if (state == null) return string.Empty;
             
-            string parentPath = GetStateParentPath(state, rootStateMachine);
+            string parentPath = GetStateParentPath(state);
             return !string.IsNullOrEmpty(parentPath) 
                 ? $"{state.name} ({parentPath})" 
                 : state.name;
@@ -392,7 +390,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                         if (t != null && t.destinationState == _splitResolvedState)
                         {
                             bool shouldMove = prevIncoming.TryGetValue(t, out var v) && v;
-                            string sourceName = FormatStateNameWithPath(state, layer.stateMachine);
+                            string sourceName = FormatStateNameWithPath(state);
                             
                             _splitIncomingAdjustments.Add(new StateSplitService.TransitionAdjustment
                             {
@@ -431,7 +429,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
                         string destName;
                         if (t.destinationState != null)
                         {
-                            destName = FormatStateNameWithPath(t.destinationState, layer.stateMachine);
+                            destName = FormatStateNameWithPath(t.destinationState);
                         }
                         else if (t.destinationStateMachine != null)
                         {

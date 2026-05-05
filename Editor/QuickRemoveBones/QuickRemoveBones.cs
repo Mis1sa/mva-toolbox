@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -79,9 +78,7 @@ namespace MVA.Toolbox.QuickRemoveBones
                 var candidate = _removeCandidates[i];
                 if (candidate == null)
                 {
-                    RemoveFoldoutState(candidate);
                     _removeCandidates.RemoveAt(i);
-                    _exclusiveBones.Remove(candidate);
                     refreshed = true;
                     continue;
                 }
@@ -266,7 +263,6 @@ namespace MVA.Toolbox.QuickRemoveBones
 
             _removeCandidates.Clear();
             RefreshBoneAnalysis();
-            _boneFoldoutStates.Clear();
         }
 
         void RefreshBoneAnalysis()
@@ -274,10 +270,13 @@ namespace MVA.Toolbox.QuickRemoveBones
             _exclusiveBones.Clear();
             if (_removeCandidates.Count == 0)
             {
+                _protectedBones.Clear();
+                _allBones.Clear();
+                _boneFoldoutStates.Clear();
                 return;
             }
 
-            var boneUsage = BuildBoneUsage(_removeCandidates);
+            var boneUsage = BoneExclusivityUtil.BuildBoneUsage(_removeCandidates);
             _allBones = new HashSet<Transform>(boneUsage.Keys);
             UpdateProtectedBones(boneUsage);
 
@@ -288,25 +287,11 @@ namespace MVA.Toolbox.QuickRemoveBones
                     continue;
                 }
 
-                EnsureFoldoutState(candidate);
-                var bones = CollectExclusiveBones(candidate, boneUsage);
+                var bones = BoneExclusivityUtil.CollectExclusiveBones(candidate, boneUsage, _removeCandidates);
                 _exclusiveBones[candidate] = bones;
             }
-        }
 
-        Dictionary<Transform, HashSet<Renderer>> BuildBoneUsage(IEnumerable<Renderer> candidates)
-        {
-            return BoneExclusivityUtil.BuildBoneUsage(candidates);
-        }
-
-        List<Transform> CollectExclusiveBones(Renderer renderer, Dictionary<Transform, HashSet<Renderer>> boneUsage)
-        {
-            return BoneExclusivityUtil.CollectExclusiveBones(renderer, boneUsage, _removeCandidates);
-        }
-
-        static HashSet<int> GetUsedBoneIndices(Mesh mesh)
-        {
-            return BoneExclusivityUtil.GetUsedBoneIndices(mesh);
+            PruneFoldoutStates();
         }
 
         void ExecuteRemoval()
@@ -390,20 +375,6 @@ namespace MVA.Toolbox.QuickRemoveBones
             EditorUtility.DisplayDialog("完成", "已移除 Renderer 及其关联骨骼，可通过 Undo 撤销。", "确定");
         }
 
-        void EnsureFoldoutState(Renderer renderer)
-        {
-            if (renderer == null)
-            {
-                return;
-            }
-
-            int id = renderer.GetInstanceID();
-            if (!_boneFoldoutStates.ContainsKey(id))
-            {
-                _boneFoldoutStates[id] = true;
-            }
-        }
-
         bool GetFoldoutState(Renderer renderer)
         {
             if (renderer == null)
@@ -433,19 +404,37 @@ namespace MVA.Toolbox.QuickRemoveBones
 
         void UpdateProtectedBones(Dictionary<Transform, HashSet<Renderer>> boneUsage)
         {
-            _protectedBones.Clear();
-            if (boneUsage == null || boneUsage.Count == 0)
+            _protectedBones = BoneExclusivityUtil.CollectProtectedBones(
+                boneUsage,
+                _removeCandidates.Where(r => r != null));
+        }
+
+        void PruneFoldoutStates()
+        {
+            if (_boneFoldoutStates.Count == 0)
             {
                 return;
             }
 
-            var candidateSet = new HashSet<Renderer>(_removeCandidates.Where(r => r != null));
-            foreach (var pair in boneUsage)
+            var validIds = new HashSet<int>();
+            for (int i = 0; i < _removeCandidates.Count; i++)
             {
-                if (pair.Value.Any(renderer => !candidateSet.Contains(renderer)))
+                var candidate = _removeCandidates[i];
+                if (candidate == null)
                 {
-                    _protectedBones.Add(pair.Key);
+                    continue;
                 }
+
+                validIds.Add(candidate.GetInstanceID());
+            }
+
+            var staleIds = _boneFoldoutStates.Keys
+                .Where(id => !validIds.Contains(id))
+                .ToList();
+
+            for (int i = 0; i < staleIds.Count; i++)
+            {
+                _boneFoldoutStates.Remove(staleIds[i]);
             }
         }
 

@@ -35,7 +35,7 @@ namespace MVA.Toolbox.SyncCamera.Editor
             if (state == PlayModeStateChange.ExitingEditMode)
             {
                 StopRecording(clearCache: false);
-                ApplyCachedPoseImmediate("退出编辑模式");
+                ApplyCachedPoseImmediate();
             }
             else if (state == PlayModeStateChange.EnteredEditMode)
             {
@@ -97,7 +97,7 @@ namespace MVA.Toolbox.SyncCamera.Editor
             _hasPose = true;
         }
 
-        private static void ApplyCachedPoseImmediate(string reason)
+        private static void ApplyCachedPoseImmediate()
         {
             if (!_hasPose)
                 return;
@@ -109,12 +109,12 @@ namespace MVA.Toolbox.SyncCamera.Editor
             mainCam.transform.SetPositionAndRotation(_cachedPosition, _cachedRotation);
         }
 
-        internal static void ApplyCachedPoseOnDemand(string reason)
+        internal static void ApplyCachedPoseOnDemand()
         {
             if (!Application.isPlaying)
                 return;
 
-            ApplyCachedPoseImmediate(reason);
+            ApplyCachedPoseImmediate();
         }
     }
 
@@ -137,35 +137,56 @@ namespace MVA.Toolbox.SyncCamera.Editor
             {
                 if (isEnabled)
                 {
-                    // 确保存在主摄像机
-                    if (Camera.main == null)
-                    {
-                        Debug.LogWarning("[SyncCamera] 场景中没有主摄像机，已自动创建一个 Main Camera。");
-                        var newCamera = new GameObject("Main Camera");
-                        newCamera.tag = "MainCamera";
-                        newCamera.AddComponent<Camera>();
-                        newCamera.transform.position = new Vector3(0f, 1f, -10f);
-                        newCamera.transform.rotation = Quaternion.identity;
-                    }
-
-                    var mainCam = Camera.main;
-                    if (mainCam != null && mainCam.GetComponent<SyncCameraComponent>() == null)
-                    {
-                        mainCam.gameObject.AddComponent<SyncCameraComponent>();
-                    }
+                    var mainCam = EnsureMainCameraExists();
+                    EnsureSyncComponent(mainCam);
+                    SyncCameraPoseCache.ApplyCachedPoseOnDemand();
                 }
                 else
                 {
-                    // 在播放模式下禁用时，移除主摄像机上的同步组件
-                    var mainCam = Camera.main;
-                    if (mainCam != null)
-                    {
-                        var comp = mainCam.GetComponent<SyncCameraComponent>();
-                        if (comp != null)
-                        {
-                            Object.DestroyImmediate(comp);
-                        }
-                    }
+                    RemoveSyncComponents();
+                }
+            }
+        }
+
+        internal static Camera EnsureMainCameraExists()
+        {
+            var mainCam = Camera.main;
+            if (mainCam != null)
+            {
+                return mainCam;
+            }
+
+            Debug.LogWarning("[SyncCamera] 场景中没有主摄像机，已自动创建一个 Main Camera。");
+            var newCamera = new GameObject("Main Camera");
+            newCamera.tag = "MainCamera";
+            var cam = newCamera.AddComponent<Camera>();
+            newCamera.transform.position = new Vector3(0f, 1f, -10f);
+            newCamera.transform.rotation = Quaternion.identity;
+            return cam;
+        }
+
+        internal static void EnsureSyncComponent(Camera camera)
+        {
+            if (camera == null)
+            {
+                return;
+            }
+
+            if (camera.GetComponent<SyncCameraComponent>() == null)
+            {
+                camera.gameObject.AddComponent<SyncCameraComponent>();
+            }
+        }
+
+        internal static void RemoveSyncComponents()
+        {
+            var comps = Object.FindObjectsOfType<SyncCameraComponent>(true);
+            for (int i = 0; i < comps.Length; i++)
+            {
+                var comp = comps[i];
+                if (comp != null)
+                {
+                    Object.DestroyImmediate(comp);
                 }
             }
         }
@@ -199,22 +220,9 @@ namespace MVA.Toolbox.SyncCamera.Editor
                 if (!SyncCameraTool.IsSyncEnabled())
                     return;
 
-                if (Camera.main == null)
-                {
-                    Debug.LogWarning("[SyncCamera] 场景中没有主摄像机，已自动创建一个 Main Camera。");
-                    var newCamera = new GameObject("Main Camera");
-                    newCamera.tag = "MainCamera";
-                    newCamera.AddComponent<Camera>();
-                    newCamera.transform.position = new Vector3(0f, 1f, -10f);
-                    newCamera.transform.rotation = Quaternion.identity;
-                }
-
-                var mainCam = Camera.main;
-                if (mainCam != null && mainCam.GetComponent<SyncCameraComponent>() == null)
-                {
-                    mainCam.gameObject.AddComponent<SyncCameraComponent>();
-                    SyncCameraPoseCache.ApplyCachedPoseOnDemand("播放时启用");
-                }
+                var mainCam = SyncCameraTool.EnsureMainCameraExists();
+                SyncCameraTool.EnsureSyncComponent(mainCam);
+                SyncCameraPoseCache.ApplyCachedPoseOnDemand();
             }
         }
     }

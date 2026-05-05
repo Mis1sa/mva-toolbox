@@ -27,24 +27,24 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
             _config = config;
         }
 
-        public void Execute()
+        public bool Execute()
         {
             if (_config == null || _config.avatar == null)
             {
                 Debug.LogError("DirectApplyWorkflow: invalid config or avatar.");
-                return;
+                return false;
             }
             if (!ToggleConfigValidator.Validate(_config.config, out string error))
             {
                 Debug.LogError($"DirectApplyWorkflow: {error}");
-                return;
+                return false;
             }
 
             PrepareResources(_config.avatar);
             if (_fxController == null || _expressionParameters == null || _expressionsMenu == null)
             {
                 Debug.LogError("DirectApplyWorkflow: failed to prepare avatar resources.");
-                return;
+                return false;
             }
 
             try
@@ -66,10 +66,12 @@ namespace MVA.Toolbox.AvatarQuickToggle.Workflows
                 MVA.Toolbox.AvatarQuickToggle.Editor.QuickToggleWindow.RefreshCachedAvatarDataIfOpen();
 
                 Debug.Log($"DirectApplyWorkflow: layer '{_config.config.layerName}' generated successfully.");
+                return true;
             }
             catch (Exception ex)
             {
                 Debug.LogError($"DirectApplyWorkflow: {ex.Message}");
+                return false;
             }
         }
 

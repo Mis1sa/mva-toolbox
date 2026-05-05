@@ -197,15 +197,7 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Services.Transition
 
                     if (param.type == AnimatorControllerParameterType.Int)
                     {
-                        if (statePath == "Exit")
-                        {
-                            // 改为连接顺序
-                            // 注意：这里我们修改的是传入的结构体副本，不影响外部，但在本方法内有效
-                            // 由于结构体是值类型，直接修改副本无效，需要替换列表中的元素或者在循环中使用 ref (但 IReadOnlyList 不支持)
-                            // 这里我们假设调用者传入的数据是正确配置的，或者我们在下面排序时处理
-                            // 实际上，如果 statePath == "Exit"，我们应该在排序逻辑中忽略 NameNumberOrder
-                        }
-                        else
+                        if (statePath != "Exit")
                         {
                             foreach (var info in transitionsToModifyInfo)
                             {

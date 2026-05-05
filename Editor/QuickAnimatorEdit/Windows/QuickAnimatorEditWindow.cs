@@ -77,7 +77,6 @@ namespace MVA.Toolbox.QuickAnimatorEdit.Windows
             if (_context.Controllers.Count > 0)
             {
                 EditorGUILayout.Space(4f);
-                // 参数功能不需要层级选择，将其置灰
                 bool enableLayerSelection = _currentTab != Tab.Parameter;
                 _context.DrawControllerAndLayerSelectionUI(enableLayerSelection);
             }

@@ -230,9 +230,9 @@ namespace MVA.Toolbox.BoneSyncTools
             {
                 if (t == null) continue;
                 t.gameObject.SetActive(active);
-                if (_writeAnim && ShouldWriteKeyframe(t.gameObject, root))
+                if (_writeAnim && ShouldWriteKeyframe(t.gameObject))
                 {
-                    WriteActiveKeyframe(t.gameObject, active, root);
+                    WriteActiveKeyframe(t.gameObject, active);
                 }
             }
         }
@@ -322,7 +322,7 @@ namespace MVA.Toolbox.BoneSyncTools
             return AnimationMode.InAnimationMode();
         }
 
-        private static bool ShouldWriteKeyframe(GameObject go, Transform root)
+        private static bool ShouldWriteKeyframe(GameObject go)
         {
             if (go == null) return false;
             if (!IsRecording()) return false;
@@ -330,15 +330,15 @@ namespace MVA.Toolbox.BoneSyncTools
             var ctx = GetActiveAnimationContext();
             if (ctx.clip == null || ctx.root == null) return false;
 
-            var path = AnimationUtility.CalculateTransformPath(go.transform, ctx.root);
-            return true;
+            return IsTransformInSubtree(go.transform, ctx.root);
         }
 
-        private static void WriteActiveKeyframe(GameObject go, bool active, Transform root)
+        private static void WriteActiveKeyframe(GameObject go, bool active)
         {
             if (go == null) return;
             var ctx = GetActiveAnimationContext();
             if (ctx.clip == null || ctx.root == null) return;
+            if (!IsTransformInSubtree(go.transform, ctx.root)) return;
             _lastRecordingRoot = ctx.root;
 
             var binding = new EditorCurveBinding
@@ -388,7 +388,7 @@ namespace MVA.Toolbox.BoneSyncTools
             if (type != AnimationUtility.CurveModifiedType.CurveDeleted) return;
             if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") return;
             if (clip == null) return;
-            var rootForRemoval = _lastRecordingRoot != null ? _lastRecordingRoot : _lastRoot;
+            var rootForRemoval = ResolveRemovalRoot(clip, binding);
             if (rootForRemoval == null) return;
 
             var target = AnimationUtility.GetAnimatedObject(rootForRemoval.gameObject, binding) as GameObject;
@@ -420,9 +420,63 @@ namespace MVA.Toolbox.BoneSyncTools
             }
         }
 
-        private static bool IsUsedBone(Transform t, Dictionary<Transform, HashSet<Renderer>> boneUsage)
+        private static Transform ResolveRemovalRoot(AnimationClip clip, EditorCurveBinding binding)
         {
-            return t != null && boneUsage != null && boneUsage.ContainsKey(t);
+            var candidates = new List<Transform>();
+
+            var ctx = GetActiveAnimationContext();
+            bool hasActiveContext = ctx.clip == clip && ctx.root != null;
+            if (hasActiveContext)
+            {
+                candidates.Add(ctx.root);
+            }
+
+            if (_lastRecordingRoot != null)
+            {
+                candidates.Add(_lastRecordingRoot);
+            }
+
+            if (_lastRoot != null)
+            {
+                candidates.Add(_lastRoot);
+            }
+
+            var uniqueCandidates = new List<Transform>();
+            var seen = new HashSet<Transform>();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var candidate = candidates[i];
+                if (candidate == null) continue;
+                if (!seen.Add(candidate)) continue;
+                uniqueCandidates.Add(candidate);
+            }
+
+            Transform matchedRoot = null;
+            int matchCount = 0;
+
+            for (int i = 0; i < uniqueCandidates.Count; i++)
+            {
+                var candidateRoot = uniqueCandidates[i];
+                var candidateTarget = AnimationUtility.GetAnimatedObject(candidateRoot.gameObject, binding) as GameObject;
+                if (candidateTarget == null) continue;
+                if (candidateTarget.GetComponent<SkinnedMeshRenderer>() == null) continue;
+
+                matchedRoot = candidateRoot;
+                matchCount++;
+
+                if (matchCount > 1)
+                {
+                    return hasActiveContext ? ctx.root : null;
+                }
+            }
+
+            return matchCount == 1 ? matchedRoot : null;
+        }
+
+        private static bool IsTransformInSubtree(Transform target, Transform root)
+        {
+            if (target == null || root == null) return false;
+            return target == root || target.IsChildOf(root);
         }
 
         private static bool IsSafeContainer(Transform t, SkinnedMeshRenderer smr, Dictionary<Transform, HashSet<Renderer>> boneUsage, bool checkChildren)

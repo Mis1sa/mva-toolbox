@@ -2,43 +2,46 @@
 
 `com.mis1sa.mva-toolbox`
 
-MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时的工作，包含以下功能：
+MVA Toolbox 是一个 VRChat Avatar 工具包，用于处理一些繁琐耗时的工作。以下是主要功能模块：
 
-- **Avatar Quick Toggle**
-  - 一键生成 Bool / Int / Float 类型的切换层。
+## 功能
 
-- **Quick Animator Edit**
-  - 状态模式：提供状态拆分、手动 Transition 调整、状态合并流程。
-  - 过渡模式：批量创建或修改 Transition、条件、Exit Time 与默认过渡，支持条件增减。
-  - 参数模式：批量扫描 / 添加 / 检查 / 调整 / 追踪参数，支持 Avatar / Animator 资产与 FX 默认选择，支持 MA Parameters 组件参数直接添加到 Parameters，提供参数移除操作，以及参数追踪（查看参数在 Transition、State、BlendTree 中的引用位置和 Avatar Parameter Driver、Animation Curve、场景组件中的写入位置）。
-  - BlendTree 模式：快速定位状态下的 BlendTree，并支持移动、导出、创建父级等操作。
+### 🧬 头像工具（Avatar Tools）
+- **开关生成**：一键生成 Bool / Int / Float 类型的快速切换层。
+- **移除网格权重骨骼**：快速清理 SkinnedMeshRenderer 的独占骨骼，支持批量操作。
 
-- **AnimFix Utility**
-  - **查找动画**：按“Avatar/Animator 根 + 目标对象 + 属性”查找影响该属性的所有 AnimationClip。
-  - **烘培默认值**：将 Avatar 当前默认姿态烘焙为 AnimationClip，用于在切换控制器或合并状态机前保存默认状态。
-  - **动画重定向**：辅助修复动画缺失属性和追踪 Animator 曲线并批量重定向层级、组件与 BlendShape 变动导致的路径。
+### 🎮 动画控制器工具（Animator Controller Tools）
+- **状态工具**：提供状态拆分、合并、属性调整等编辑流程。
+- **过渡工具**：批量创建或修改 Transition、条件、Exit Time 与默认过渡，支持条件增减。
+- **参数工具**：
+  - 批量扫描 / 添加 / 检查 / 调整参数
+  - 支持 Avatar / Animator 资产与 FX 默认选择
+  - 支持 MA Parameters 组件参数直接添加
+  - 提供参数移除操作
+  - 参数追踪：查看参数在 Transition、State、BlendTree 中的引用位置和 Avatar Parameter Driver、Animation Curve、场景组件中的写入位置
+- **混合树工具**：快速定位状态下的 BlendTree，支持移动、导出、创建父级等操作。
 
-- **Sync Main Camera to Scene View**
-  - 在播放模式下，将主摄像机的位置和旋转对齐到 Scene 视图相机
+### 🎬 动画工具（Animation Tools）
+- **动画查询**：按"Avatar/Animator 根 + 目标对象 + 属性"查找影响该属性的所有 AnimationClip。
+- **默认值烘培**：将 Avatar 当前默认姿态烘焙为 AnimationClip，用于切换控制器或合并状态机前保存默认状态。
+- **动画重定向**：修复动画缺失属性，追踪 Animator 曲线并批量重定向层级、组件与 BlendShape 变动。
+- **动画切换**：在 Animation 窗口中快速前后切换动画片段（快捷键：Shift+Alt+Z/X）。
 
-- **Bone Active Sync**
-  - 录制/编辑时同步网格与独占骨骼的启用状态，可选写入/移除动画属性，支持最小化父级容器策略与独占骨骼模式。
+### 🎨 材质工具（Material Tools）
+- **材质纹理替换**：批量替换材质属性，支持从旧着色器迁移到新着色器，减少手工调整工作量。
 
-- **Material Refit**
-  - 批量替换材质属性，如从旧着色器迁移到新着色器时，将常用属性重新映射到新材质上，减少手工逐个材质调整的工作量。
+### 🔧 组件工具（Component Tools）
+- **Phys Bone 碰撞可视化**：在编辑器中可视化显示 VRChat Phys Bone 碰撞体。
 
-- **Quick Remove Bones**
-  - 拖入需要移除的 SkinnedMeshRenderer，将列出这些网格独占的骨骼，支持批量移除网格与对应骨骼。
- 
-- **Utilities**
-  - Find References：查找资产在项目和场景中的引用位置，支持引用链查看和跨资产搜索。
-  - Jump To Animator：在资产中选中 AnimationClip，右键菜单跳转到引用它的 Animator / Avatar。
-  - Switch Anim：在 Animation 窗口中，通过菜单或快捷键在当前物体的 AnimationClip 列表中前后切换。
+### 📍 杂项（Misc）
+- **引用查询**：查找资产在项目和场景中的引用位置，支持引用链查看和跨资产搜索。
+- **同步主摄像机**：在播放模式下将主摄像机的位置和旋转同步到 Scene 视图相机。
 
-- **必需**
-  - Unity **2022.3.22f1**
-  - VRChat Avatars SDK：`com.vrchat.avatars`
-  - NDMF：`nadena.dev.ndmf`  
+## 必须
+
+- Unity **2022.3.22f1**
+- VRChat Avatars SDK：`com.vrchat.avatars`
+- NDMF：`nadena.dev.ndmf`  
 
 ## 安装与使用
 

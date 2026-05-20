@@ -6,20 +6,6 @@
   "packages": {
     "com.mis1sa.mva-toolbox": {
       "versions": {
-        "0.7.0-beta.1": {
-          "name": "com.mis1sa.mva-toolbox",
-          "displayName": "MVA Toolbox",
-          "version": "0.7.0-beta.1",
-          "description": "Simple tools for VRChat Avatar.",
-          "unity": "2022.3",
-          "license": "MIT",
-          "url": "https://github.com/Mis1sa/mva-toolbox/releases/download/V0.7.0-beta.1/mva-toolbox-0.7.0-beta.1.zip",
-          "legacyFolders": {},
-          "vpmDependencies": {
-            "com.vrchat.avatars": ">=3.9.0",
-            "nadena.dev.ndmf": ">=1.10.1"
-          }
-        },
         "0.0.1": {
           "name": "com.mis1sa.mva-toolbox",
           "displayName": "MVA Toolbox",
@@ -252,6 +238,34 @@
           "unity": "2022.3",
           "license": "MIT",
           "url": "https://github.com/Mis1sa/mva-toolbox/releases/download/V0.6.1/mva-toolbox-0.6.1.zip",
+          "legacyFolders": {},
+          "vpmDependencies": {
+            "com.vrchat.avatars": ">=3.9.0",
+            "nadena.dev.ndmf": ">=1.10.1"
+          }
+        },
+        "0.7.0-beta.1": {
+          "name": "com.mis1sa.mva-toolbox",
+          "displayName": "MVA Toolbox",
+          "version": "0.7.0-beta.1",
+          "description": "Simple tools for VRChat Avatar.",
+          "unity": "2022.3",
+          "license": "MIT",
+          "url": "https://github.com/Mis1sa/mva-toolbox/releases/download/V0.7.0-beta.1/mva-toolbox-0.7.0-beta.1.zip",
+          "legacyFolders": {},
+          "vpmDependencies": {
+            "com.vrchat.avatars": ">=3.9.0",
+            "nadena.dev.ndmf": ">=1.10.1"
+          }
+        },
+        "1.0.0-beta.1": {
+          "name": "com.mis1sa.mva-toolbox",
+          "displayName": "MVA Toolbox",
+          "version": "1.0.0-beta.1",
+          "description": "Simple tools for VRChat Avatar.",
+          "unity": "2022.3",
+          "license": "MIT",
+          "url": "https://github.com/Mis1sa/mva-toolbox/releases/download/V1.0.0-beta.1/mva-toolbox-1.0.0-beta.1.zip",
           "legacyFolders": {},
           "vpmDependencies": {
             "com.vrchat.avatars": ">=3.9.0",

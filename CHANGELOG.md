@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.0-beta.1] - 2026-05-20
+
+### Changed
+
+重构、模块化整理。
+
+### Removed
+
+- 移除 Bone Active Sync 工具。
+
+### Added
+
+- Phys Bone Collision Overlay：新增 VRChat Phys Bone 碰撞体可视化工具，在编辑器中直观展示碰撞区域。
+
 ## [0.7.0-beta.1] - 2026-05-05
 
 ### Added

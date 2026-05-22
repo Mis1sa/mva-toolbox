@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MVA.Toolbox.Animation.Shared.Controllers;
+using MVA.Toolbox.Animation.Shared.SelectableRange;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -25,7 +27,8 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 return;
             }
 
-            Transform controllerRoot = ResolveControllerRoot(controller) ?? _targetRoot.transform;
+            ControllerWithRoot controllerScope = ResolveControllerScope(controller);
+            Transform controllerRoot = controllerScope.RootTransform ?? _targetRoot.transform;
             List<AnimationClip> clipsToProcess = GetClipsToProcess(controller, _selectedLayerIndex);
             if (clipsToProcess.Count == 0)
             {
@@ -112,6 +115,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
             _trackedControllerIndex = _selectedControllerIndex;
             _trackedLayerIndex = _selectedLayerIndex;
             _trackedControllerRoot = controllerRoot;
+            _trackedControllerIgnoresNestedAnimators = controllerScope.IgnoresNestedAnimators;
         }
 
         internal void CalculateCurrentPaths()
@@ -433,14 +437,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
 
         private Transform ResolveControllerRoot(AnimatorController controller)
         {
-            if (controller == null)
-            {
-                return _targetRoot != null ? _targetRoot.transform : null;
-            }
-
-            return _controllerRootMap.TryGetValue(controller, out Transform root) && root != null
-                ? root
-                : _targetRoot != null ? _targetRoot.transform : null;
+            return ResolveControllerScope(controller).RootTransform;
         }
 
         private List<AnimationClip> GetClipsToProcess(AnimatorController controller, int layerIndex)
@@ -875,10 +872,19 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 return null;
             }
 
-            string path = GetRelativePath(go.transform, _targetRoot.transform);
-            if (path == null && go.transform != _targetRoot.transform)
+            ControllerWithRoot selectionScope = CurrentSelectionScope;
+            Transform selectionRoot = selectionScope.RootTransform ?? _targetRoot.transform;
+            if (go.transform == selectionRoot)
             {
-                EditorUtility.DisplayDialog("错误", $"无法修复路径 '{oldPath}'：物体 '{go.name}' 不在目标物体 '{_targetRoot.name}' 的层级结构之下。", "确定");
+                string scopeName = selectionRoot == _targetRoot.transform ? _targetRoot.name : selectionRoot.name;
+                EditorUtility.DisplayDialog("错误", $"无法修复路径 '{oldPath}'：物体 '{go.name}' 是当前控制器作用域 '{scopeName}' 的根物体，不能作为可选目标。", "确定");
+                return null;
+            }
+
+            if (!AnimationSelectableRangeUtility.IsTransformInControllerScope(go.transform, selectionRoot, selectionScope.IgnoresNestedAnimators))
+            {
+                string scopeName = selectionRoot == _targetRoot.transform ? _targetRoot.name : selectionRoot.name;
+                EditorUtility.DisplayDialog("错误", $"无法修复路径 '{oldPath}'：物体 '{go.name}' 不在当前控制器作用域 '{scopeName}' 内。", "确定");
                 return null;
             }
 

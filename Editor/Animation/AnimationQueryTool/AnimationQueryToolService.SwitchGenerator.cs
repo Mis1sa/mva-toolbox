@@ -12,7 +12,7 @@ namespace MVA.Toolbox.AnimationQueryTool
     {
         internal IReadOnlyList<string> BuildSwitchGeneratorConfigHints()
         {
-            if (_avatarDescriptor == null || _selectedAnimatedObject == null)
+            if (!ShouldExposeSwitchGeneratorConfig())
             {
                 return Array.Empty<string>();
             }
@@ -31,36 +31,6 @@ namespace MVA.Toolbox.AnimationQueryTool
 
             GameObject targetGo = (_selectedAnimatedObject as GameObject) ?? (_selectedAnimatedObject as Component)?.gameObject;
             if (targetGo == null)
-            {
-                return Array.Empty<string>();
-            }
-
-            AnimatorController selectedController = SelectedController;
-            if (selectedController == null)
-            {
-                return Array.Empty<string>();
-            }
-
-            bool allowScope = false;
-            if (_selectedLayerIndex < 0)
-            {
-                allowScope = true;
-            }
-            else
-            {
-                VRCAvatarDescriptor.CustomAnimLayer[] baseLayers = _avatarDescriptor.baseAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
-                for (int i = 0; i < baseLayers.Length; i++)
-                {
-                    VRCAvatarDescriptor.CustomAnimLayer layer = baseLayers[i];
-                    if (layer.type == VRCAvatarDescriptor.AnimLayerType.FX && layer.animatorController == selectedController)
-                    {
-                        allowScope = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!allowScope)
             {
                 return Array.Empty<string>();
             }
@@ -199,7 +169,7 @@ namespace MVA.Toolbox.AnimationQueryTool
 
         private void AugmentGroupsWithSwitchGeneratorConfigForTarget()
         {
-            if (_avatarDescriptor == null || _selectedAnimatedObject == null)
+            if (!ShouldExposeSwitchGeneratorConfig())
             {
                 return;
             }
@@ -336,6 +306,42 @@ namespace MVA.Toolbox.AnimationQueryTool
                 };
                 _availableGroups.Add(group);
             }
+        }
+
+        private bool ShouldExposeSwitchGeneratorConfig()
+        {
+            if (_avatarDescriptor == null || _selectedAnimatedObject == null)
+            {
+                return false;
+            }
+
+            if (_selectedControllerIndex < 0)
+            {
+                return true;
+            }
+
+            AnimatorController selectedController = SelectedController;
+            return IsFxController(selectedController);
+        }
+
+        private bool IsFxController(AnimatorController controller)
+        {
+            if (_avatarDescriptor == null || controller == null)
+            {
+                return false;
+            }
+
+            VRCAvatarDescriptor.CustomAnimLayer[] baseLayers = _avatarDescriptor.baseAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
+            for (int i = 0; i < baseLayers.Length; i++)
+            {
+                VRCAvatarDescriptor.CustomAnimLayer layer = baseLayers[i];
+                if (layer.type == VRCAvatarDescriptor.AnimLayerType.FX && layer.animatorController == controller)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

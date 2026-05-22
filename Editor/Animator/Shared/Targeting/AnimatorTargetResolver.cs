@@ -15,12 +15,12 @@ namespace MVA.Toolbox.AnimatorShared.Targeting
 
             if (target is GameObject go)
             {
-                return go.GetComponent<VRCAvatarDescriptor>() ?? go.GetComponentInParent<VRCAvatarDescriptor>(true);
+                return go.GetComponent<VRCAvatarDescriptor>();
             }
 
             if (target is Component component)
             {
-                return component.GetComponent<VRCAvatarDescriptor>() ?? component.GetComponentInParent<VRCAvatarDescriptor>(true);
+                return component.GetComponent<VRCAvatarDescriptor>();
             }
 
             return null;
@@ -55,12 +55,12 @@ namespace MVA.Toolbox.AnimatorShared.Targeting
 
             if (target is GameObject go)
             {
-                return go.GetComponent<Animator>() ?? go.GetComponentInParent<Animator>(true);
+                return go.GetComponent<Animator>();
             }
 
             if (target is Component component)
             {
-                return component.GetComponent<Animator>() ?? component.GetComponentInParent<Animator>(true);
+                return component.GetComponent<Animator>();
             }
 
             return null;

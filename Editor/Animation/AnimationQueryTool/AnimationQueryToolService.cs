@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MVA.Toolbox.Animation.Shared.Controllers;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -26,7 +27,7 @@ namespace MVA.Toolbox.AnimationQueryTool
         private GameObject _targetRoot;
         private VRCAvatarDescriptor _avatarDescriptor;
         private IReadOnlyList<AnimatorController> _controllers;
-        private Dictionary<AnimatorController, Transform> _controllerRootMap;
+        private Dictionary<AnimatorController, ControllerWithRoot> _controllerScopeMap;
         private int _selectedControllerIndex = -1;
         private int _selectedLayerIndex = -1;
 
@@ -61,7 +62,7 @@ namespace MVA.Toolbox.AnimationQueryTool
             GameObject targetRoot,
             VRCAvatarDescriptor avatarDescriptor,
             IReadOnlyList<AnimatorController> controllers,
-            Dictionary<AnimatorController, Transform> controllerRootMap,
+            Dictionary<AnimatorController, ControllerWithRoot> controllerScopeMap,
             int selectedControllerIndex,
             int selectedLayerIndex)
         {
@@ -70,7 +71,7 @@ namespace MVA.Toolbox.AnimationQueryTool
             _targetRoot = targetRoot;
             _avatarDescriptor = avatarDescriptor;
             _controllers = controllers;
-            _controllerRootMap = controllerRootMap;
+            _controllerScopeMap = controllerScopeMap;
 
             if (targetChanged)
             {
@@ -87,6 +88,13 @@ namespace MVA.Toolbox.AnimationQueryTool
 
                 if (_selectedAnimatedObject != null && _controllers != null && _controllers.Count > 0)
                 {
+                    Object normalized = NormalizeSelectedObjectForScope(_selectedAnimatedObject);
+                    if (!Equals(normalized, _selectedAnimatedObject))
+                    {
+                        SetSelectedAnimatedObject(normalized);
+                        return;
+                    }
+
                     ScanAndGroupAnimatedProperties();
                 }
             }
@@ -177,16 +185,33 @@ namespace MVA.Toolbox.AnimationQueryTool
             }
         }
 
-        private Transform SelectedControllerRoot => GetControllerRoot(SelectedController);
+        private ControllerWithRoot SelectedControllerScope => GetControllerScope(SelectedController);
 
-        private Transform GetControllerRoot(AnimatorController controller)
+        private Transform SelectedControllerRoot => SelectedControllerScope.RootTransform;
+
+        private ControllerWithRoot GetControllerScope(AnimatorController controller)
         {
-            if (controller == null || _controllerRootMap == null)
+            if (controller == null)
             {
-                return null;
+                return new ControllerWithRoot
+                {
+                    Controller = null,
+                    RootTransform = _targetRoot != null ? _targetRoot.transform : null,
+                    IgnoresNestedAnimators = false
+                };
             }
 
-            return _controllerRootMap.TryGetValue(controller, out Transform root) ? root : null;
+            if (_controllerScopeMap != null && _controllerScopeMap.TryGetValue(controller, out ControllerWithRoot scope) && scope.RootTransform != null)
+            {
+                return scope;
+            }
+
+            return new ControllerWithRoot
+            {
+                Controller = controller,
+                RootTransform = _targetRoot != null ? _targetRoot.transform : null,
+                IgnoresNestedAnimators = false
+            };
         }
 
         private void ResetSelection()

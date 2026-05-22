@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MVA.Toolbox.Animation.Shared.Controllers;
 using MVA.Toolbox.AnimatorShared.Targeting;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -289,10 +290,30 @@ namespace MVA.Toolbox.AnimatorParameterTool
                 return;
             }
 
-            AnimatorControllerCollectionResult collection = AnimatorControllerCollector.CollectControllers(_targetObject, _avatarDescriptor, _animator, root);
-            _controllers.AddRange(collection.Controllers);
-            _controllerNames.AddRange(collection.ControllerNames);
-            _selectedControllerIndex = collection.SuggestedSelectedIndex;
+            List<ControllerWithRoot> entries = AnimatorControllerCollection.CollectControllersWithRoot(root, includeSpecialLayers: true, allowAnimatorSubtree: true);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                ControllerWithRoot entry = entries[i];
+                if (entry.Controller != null)
+                {
+                    _controllers.Add(entry.Controller);
+                }
+            }
+
+            _controllerNames.AddRange(AnimatorControllerCollection.BuildControllerDisplayNames(_avatarDescriptor, _animator, _controllers));
+            _selectedControllerIndex = 0;
+            if (_avatarDescriptor != null)
+            {
+                AnimatorController fxController = AnimatorControllerCollection.GetExistingFXController(_avatarDescriptor);
+                if (fxController != null)
+                {
+                    int fxIndex = _controllers.IndexOf(fxController);
+                    if (fxIndex >= 0)
+                    {
+                        _selectedControllerIndex = fxIndex;
+                    }
+                }
+            }
 
             if (ShouldIncludeMAParameterControllers(_mode))
             {

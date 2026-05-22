@@ -17,7 +17,7 @@ namespace MVA.Toolbox.AnimationBakeTool
 
         private readonly List<AnimatorController> _controllers = new List<AnimatorController>();
         private readonly List<string> _controllerNames = new List<string>();
-        private readonly Dictionary<AnimatorController, Transform> _controllerRootMap = new Dictionary<AnimatorController, Transform>();
+        private readonly Dictionary<AnimatorController, ControllerWithRoot> _controllerScopeMap = new Dictionary<AnimatorController, ControllerWithRoot>();
 
         private GameObject _targetRoot;
         private VRCAvatarDescriptor _avatarDescriptor;
@@ -96,7 +96,7 @@ namespace MVA.Toolbox.AnimationBakeTool
                     return null;
                 }
 
-                return _controllerRootMap.TryGetValue(controller, out Transform root) ? root : null;
+                return _controllerScopeMap.TryGetValue(controller, out ControllerWithRoot scope) ? scope.RootTransform : null;
             }
         }
 
@@ -221,7 +221,7 @@ namespace MVA.Toolbox.AnimationBakeTool
 
             _controllers.Clear();
             _controllerNames.Clear();
-            _controllerRootMap.Clear();
+            _controllerScopeMap.Clear();
             _selectedControllerIndex = 0;
             _selectedLayerIndex = -1;
 
@@ -230,7 +230,7 @@ namespace MVA.Toolbox.AnimationBakeTool
                 return;
             }
 
-            List<ControllerWithRoot> entries = AnimationControllerCollection.CollectControllersWithRoot(_targetRoot, includeSpecialLayers: true, allowAnimatorSubtree: true);
+            List<ControllerWithRoot> entries = AnimatorControllerCollection.CollectControllersWithRoot(_targetRoot, includeSpecialLayers: true, allowAnimatorSubtree: true);
             for (int i = 0; i < entries.Count; i++)
             {
                 ControllerWithRoot entry = entries[i];
@@ -242,7 +242,7 @@ namespace MVA.Toolbox.AnimationBakeTool
                 _controllers.Add(entry.Controller);
                 if (entry.RootTransform != null)
                 {
-                    _controllerRootMap[entry.Controller] = entry.RootTransform;
+                    _controllerScopeMap[entry.Controller] = entry;
                 }
             }
 
@@ -251,12 +251,12 @@ namespace MVA.Toolbox.AnimationBakeTool
                 return;
             }
 
-            _controllerNames.AddRange(AnimationControllerCollection.BuildControllerDisplayNames(_avatarDescriptor, _animator, _controllers));
+            _controllerNames.AddRange(AnimatorControllerCollection.BuildControllerDisplayNames(_avatarDescriptor, _animator, _controllers, _controllerScopeMap));
 
             int selectedIndex = previousController != null ? _controllers.IndexOf(previousController) : -1;
             if (selectedIndex < 0 && _avatarDescriptor != null)
             {
-                AnimatorController fxController = AnimationControllerCollection.GetExistingFXController(_avatarDescriptor);
+                AnimatorController fxController = AnimatorControllerCollection.GetExistingFXController(_avatarDescriptor);
                 if (fxController != null)
                 {
                     selectedIndex = _controllers.IndexOf(fxController);
@@ -286,7 +286,7 @@ namespace MVA.Toolbox.AnimationBakeTool
             _animator = null;
             _controllers.Clear();
             _controllerNames.Clear();
-            _controllerRootMap.Clear();
+            _controllerScopeMap.Clear();
             _selectedControllerIndex = 0;
             _selectedLayerIndex = -1;
         }

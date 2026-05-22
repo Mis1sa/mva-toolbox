@@ -24,7 +24,8 @@ namespace MVA.Toolbox.Animation.Shared.ModularAvatar
             Transform traversalRoot,
             Transform avatarRoot,
             bool isAvatar,
-            Action<AnimatorController, Transform> addController)
+            bool allowAnimatorSubtree,
+            Action<AnimatorController, Transform, bool> addController)
         {
             if (traversalRoot == null || addController == null || !EnsureMergeAnimatorReflection())
             {
@@ -32,7 +33,7 @@ namespace MVA.Toolbox.Animation.Shared.ModularAvatar
             }
 
             Type mergeType = _cachedMergeAnimatorType;
-            Dictionary<Transform, bool> mergePresenceCache = isAvatar ? new Dictionary<Transform, bool>() : null;
+            Dictionary<Transform, bool> mergePresenceCache = allowAnimatorSubtree ? new Dictionary<Transform, bool>() : null;
             Stack<Transform> stack = new Stack<Transform>();
             stack.Push(traversalRoot);
 
@@ -48,7 +49,7 @@ namespace MVA.Toolbox.Animation.Shared.ModularAvatar
                 bool hasAnimator = current.GetComponent<Animator>() != null;
                 if (!isRootNode && hasAnimator)
                 {
-                    if (!isAvatar)
+                    if (!allowAnimatorSubtree)
                     {
                         continue;
                     }
@@ -121,7 +122,7 @@ namespace MVA.Toolbox.Animation.Shared.ModularAvatar
             return result;
         }
 
-        private static void CollectMergeAnimatorOnTransform(Transform node, Transform avatarRoot, Type mergeType, Action<AnimatorController, Transform> addController)
+        private static void CollectMergeAnimatorOnTransform(Transform node, Transform avatarRoot, Type mergeType, Action<AnimatorController, Transform, bool> addController)
         {
             if (node == null || mergeType == null)
             {
@@ -144,7 +145,7 @@ namespace MVA.Toolbox.Animation.Shared.ModularAvatar
                 }
 
                 Transform rootTransform = ResolveMergeAnimatorRoot(component, avatarRoot, controller) ?? node;
-                addController(controller, rootTransform);
+                addController(controller, rootTransform, true);
             }
         }
 

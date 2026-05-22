@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MVA.Toolbox.Animation.Shared.Controllers;
+using MVA.Toolbox.Animation.Shared.SelectableRange;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -111,7 +113,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
 
         private GameObject _targetRoot;
         private IReadOnlyList<AnimatorController> _controllers = Array.Empty<AnimatorController>();
-        private Dictionary<AnimatorController, Transform> _controllerRootMap = new Dictionary<AnimatorController, Transform>();
+        private Dictionary<AnimatorController, ControllerWithRoot> _controllerScopeMap = new Dictionary<AnimatorController, ControllerWithRoot>();
         private int _selectedControllerIndex = -1;
         private int _selectedLayerIndex = -1;
 
@@ -125,6 +127,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
         private int _trackedControllerIndex = -1;
         private int _trackedLayerIndex = -1;
         private Transform _trackedControllerRoot;
+        private bool _trackedControllerIgnoresNestedAnimators;
 
         internal GameObject TargetRoot => _targetRoot;
         internal bool HasSnapshot => _pathChangeGroups.Count > 0 || _missingGroups.Count > 0;
@@ -143,6 +146,15 @@ namespace MVA.Toolbox.AnimationRedirectTool
         internal IReadOnlyList<PathChangeGroup> PathChangeGroups => _pathChangeGroups;
         internal IReadOnlyList<MissingObjectGroup> MissingGroups => _missingGroups;
         internal IReadOnlyList<ComponentChangeGroup> ComponentChangeGroups => _componentChangeGroups;
+        internal ControllerWithRoot CurrentSelectionScope => _trackedControllerRoot != null
+            ? new ControllerWithRoot
+            {
+                Controller = SelectedController,
+                RootTransform = _trackedControllerRoot,
+                IgnoresNestedAnimators = _trackedControllerIgnoresNestedAnimators
+            }
+            : ResolveControllerScope(SelectedController);
+        internal Transform CurrentSelectionRoot => CurrentSelectionScope.RootTransform;
 
         internal AnimatorController SelectedController
         {
@@ -160,14 +172,14 @@ namespace MVA.Toolbox.AnimationRedirectTool
         internal void SyncScope(
             GameObject targetRoot,
             IReadOnlyList<AnimatorController> controllers,
-            Dictionary<AnimatorController, Transform> controllerRootMap,
+            Dictionary<AnimatorController, ControllerWithRoot> controllerScopeMap,
             int selectedControllerIndex,
             int selectedLayerIndex)
         {
             bool targetChanged = _targetRoot != targetRoot;
             _targetRoot = targetRoot;
             _controllers = controllers ?? Array.Empty<AnimatorController>();
-            _controllerRootMap = controllerRootMap ?? new Dictionary<AnimatorController, Transform>();
+            _controllerScopeMap = controllerScopeMap ?? new Dictionary<AnimatorController, ControllerWithRoot>();
 
             if (targetChanged)
             {
@@ -197,6 +209,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
             _trackedControllerIndex = -1;
             _trackedLayerIndex = -1;
             _trackedControllerRoot = null;
+            _trackedControllerIgnoresNestedAnimators = false;
         }
 
         internal (int matchedCount, int skippedAmbiguous, int skippedInvalid) AutoMatchMissingFixTargets()
@@ -207,12 +220,24 @@ namespace MVA.Toolbox.AnimationRedirectTool
             }
 
             CalculateCurrentPaths();
-            Transform animatorRoot = _trackedControllerRoot ?? _targetRoot.transform;
+            ControllerWithRoot currentScope = CurrentSelectionScope;
+            Transform animatorRoot = currentScope.RootTransform ?? _targetRoot.transform;
+            bool ignoresNestedAnimators = currentScope.IgnoresNestedAnimators;
 
             Dictionary<string, List<GameObject>> nameToObjects = new Dictionary<string, List<GameObject>>(StringComparer.OrdinalIgnoreCase);
-            foreach (Transform transform in _targetRoot.GetComponentsInChildren<Transform>(true))
+            foreach (Transform transform in animatorRoot.GetComponentsInChildren<Transform>(true))
             {
                 if (transform == null)
+                {
+                    continue;
+                }
+
+                if (transform == animatorRoot)
+                {
+                    continue;
+                }
+
+                if (!AnimationSelectableRangeUtility.IsTransformInControllerScope(transform, animatorRoot, ignoresNestedAnimators))
                 {
                     continue;
                 }
@@ -342,6 +367,21 @@ namespace MVA.Toolbox.AnimationRedirectTool
             }
 
             return Mathf.Clamp(value, 0, _controllers.Count - 1);
+        }
+
+        private ControllerWithRoot ResolveControllerScope(AnimatorController controller)
+        {
+            if (controller != null && _controllerScopeMap != null && _controllerScopeMap.TryGetValue(controller, out ControllerWithRoot scope) && scope.RootTransform != null)
+            {
+                return scope;
+            }
+
+            return new ControllerWithRoot
+            {
+                Controller = controller,
+                RootTransform = _targetRoot != null ? _targetRoot.transform : null,
+                IgnoresNestedAnimators = false
+            };
         }
     }
 }

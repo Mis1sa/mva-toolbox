@@ -131,8 +131,34 @@ namespace MVA.Toolbox.SyncCamera
     internal static class SyncCameraTool
     {
         private const string EditorPrefsKey = "MVA_SyncCamera_Enabled";
+        private const string DefaultStateMigrationKey = "MVA_SyncCamera_DefaultOffMigrated";
+        private static bool _preferenceInitialized;
 
-        internal static bool IsEnabled => EditorPrefs.GetBool(EditorPrefsKey, false);
+        internal static bool IsEnabled
+        {
+            get
+            {
+                EnsurePreferenceInitialized();
+                return EditorPrefs.GetBool(EditorPrefsKey, false);
+            }
+        }
+
+        private static void EnsurePreferenceInitialized()
+        {
+            if (_preferenceInitialized)
+            {
+                return;
+            }
+
+            _preferenceInitialized = true;
+            if (EditorPrefs.GetBool(DefaultStateMigrationKey, false))
+            {
+                return;
+            }
+
+            EditorPrefs.SetBool(EditorPrefsKey, false);
+            EditorPrefs.SetBool(DefaultStateMigrationKey, true);
+        }
 
         internal static void Toggle()
         {

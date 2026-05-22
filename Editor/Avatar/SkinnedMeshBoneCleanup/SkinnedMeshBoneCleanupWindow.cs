@@ -8,17 +8,13 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
 {
     internal sealed class SkinnedMeshBoneCleanupWindow : EditorWindow
     {
-        private const string WindowTitle = "Skinned Mesh Bone Cleanup";
+        private const string WindowTitle = "移除网格权重骨骼";
 
         private readonly List<Renderer> _removeCandidates = new List<Renderer>();
         private readonly Dictionary<Renderer, List<Transform>> _exclusiveBones = new Dictionary<Renderer, List<Transform>>();
         private readonly Dictionary<int, bool> _boneFoldoutStates = new Dictionary<int, bool>();
 
-        private bool _removeChildNonBoneObjects = true;
-        private bool _excludeForeignChildObjects = true;
-
         private HashSet<Transform> _protectedBones = new HashSet<Transform>();
-        private HashSet<Transform> _allBones = new HashSet<Transform>();
 
         private Vector2 _mainScroll;
 
@@ -36,7 +32,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
             _mainScroll = ScrollView(_mainScroll, () =>
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("添加需要移除的 Renderer", EditorStyles.boldLabel);
                 DrawCandidateSection();
                 EditorGUILayout.EndVertical();
 
@@ -65,7 +60,7 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
         {
             float lineHeight = EditorGUIUtility.singleLineHeight;
             EditorGUILayout.BeginHorizontal();
-            var renderer = EditorGUILayout.ObjectField("添加 Renderer", null, typeof(Renderer), true) as Renderer;
+            var renderer = EditorGUILayout.ObjectField("添加需要移除的 Renderer", null, typeof(Renderer), true) as Renderer;
             if (renderer != null)
             {
                 TryAddCandidate(renderer);
@@ -76,8 +71,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
                 ClearCandidates();
             }
             EditorGUILayout.EndHorizontal();
-
-            DrawChildRemovalOptions();
 
             bool refreshed = false;
             for (int i = _removeCandidates.Count - 1; i >= 0; i--)
@@ -159,17 +152,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
                 ExecuteRemoval();
             }
             EditorGUI.EndDisabledGroup();
-        }
-
-        private void DrawChildRemovalOptions()
-        {
-            EditorGUILayout.BeginHorizontal();
-            _removeChildNonBoneObjects = EditorGUILayout.ToggleLeft("移除子级中非骨骼物体", _removeChildNonBoneObjects);
-            using (new EditorGUI.DisabledScope(!_removeChildNonBoneObjects))
-            {
-                _excludeForeignChildObjects = EditorGUILayout.ToggleLeft("排除其他骨骼下的非骨骼物体", _excludeForeignChildObjects);
-            }
-            EditorGUILayout.EndHorizontal();
         }
 
         private void HandleGlobalDragAndDrop()
@@ -278,14 +260,12 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
             if (_removeCandidates.Count == 0)
             {
                 _protectedBones.Clear();
-                _allBones.Clear();
                 _boneFoldoutStates.Clear();
                 return;
             }
 
             var analysis = BoneExclusivityAnalyzer.Analyze(_removeCandidates);
             _protectedBones = analysis.protectedBones;
-            _allBones = analysis.allBones;
 
             foreach (var pair in analysis.exclusiveBones)
             {
@@ -307,10 +287,7 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
             if (!SkinnedMeshBoneCleanupExecutor.Execute(
                     _removeCandidates,
                     _exclusiveBones,
-                    _protectedBones,
-                    _allBones,
-                    _removeChildNonBoneObjects,
-                    _excludeForeignChildObjects))
+                    _protectedBones))
             {
                 return;
             }
@@ -319,7 +296,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
             _exclusiveBones.Clear();
             _boneFoldoutStates.Clear();
             _protectedBones.Clear();
-            _allBones.Clear();
             EditorUtility.DisplayDialog("完成", "已移除 Renderer 及其关联骨骼，可通过 Undo 撤销。", "确定");
         }
 

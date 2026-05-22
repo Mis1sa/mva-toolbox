@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MVA.Toolbox.Animation.Shared.Controllers;
 using UnityEditor.Animations;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -12,6 +13,7 @@ namespace MVA.Toolbox.AnimationQueryTool
         private bool TryGetSelectedPathForController(
             AnimatorController controller,
             Transform controllerRoot,
+            bool ignoresNestedAnimators,
             Dictionary<AnimatorController, string> cache,
             out string relativePath)
         {
@@ -34,6 +36,18 @@ namespace MVA.Toolbox.AnimationQueryTool
             }
 
             Transform root = controllerRoot ?? _targetRoot?.transform;
+            if (_selectedTransform == root)
+            {
+                cache[controller] = null;
+                return false;
+            }
+
+            if (!IsTransformInControllerScope(_selectedTransform, root, ignoresNestedAnimators))
+            {
+                cache[controller] = null;
+                return false;
+            }
+
             if (!TryGetRelativePath(_selectedTransform, root, out string path))
             {
                 cache[controller] = null;
@@ -45,7 +59,7 @@ namespace MVA.Toolbox.AnimationQueryTool
             return true;
         }
 
-        private void ForEachLayerInScope(Action<AnimatorController, AnimatorControllerLayer, Transform> action)
+        private void ForEachLayerInScope(Action<AnimatorController, AnimatorControllerLayer, ControllerWithRoot> action)
         {
             if (action == null || _controllers == null || _controllers.Count == 0)
             {
@@ -62,8 +76,8 @@ namespace MVA.Toolbox.AnimationQueryTool
                         continue;
                     }
 
-                    Transform controllerRoot = GetControllerRoot(controller) ?? _targetRoot?.transform;
-                    IterateControllerLayers(controller, controllerRoot, _selectedLayerIndex, action);
+                    ControllerWithRoot controllerScope = GetControllerScope(controller);
+                    IterateControllerLayers(controller, controllerScope, _selectedLayerIndex, action);
                 }
                 return;
             }
@@ -74,15 +88,14 @@ namespace MVA.Toolbox.AnimationQueryTool
                 return;
             }
 
-            Transform selectedRoot = SelectedControllerRoot ?? _targetRoot?.transform;
-            IterateControllerLayers(selectedController, selectedRoot, _selectedLayerIndex, action);
+            IterateControllerLayers(selectedController, SelectedControllerScope, _selectedLayerIndex, action);
         }
 
         private static void IterateControllerLayers(
             AnimatorController controller,
-            Transform controllerRoot,
+            ControllerWithRoot controllerScope,
             int selectedLayerIndex,
-            Action<AnimatorController, AnimatorControllerLayer, Transform> action)
+            Action<AnimatorController, AnimatorControllerLayer, ControllerWithRoot> action)
         {
             AnimatorControllerLayer[] layers = controller.layers ?? Array.Empty<AnimatorControllerLayer>();
             if (layers.Length == 0)
@@ -94,14 +107,14 @@ namespace MVA.Toolbox.AnimationQueryTool
             {
                 for (int i = 0; i < layers.Length; i++)
                 {
-                    action(controller, layers[i], controllerRoot);
+                    action(controller, layers[i], controllerScope);
                 }
                 return;
             }
 
             if (selectedLayerIndex < layers.Length)
             {
-                action(controller, layers[selectedLayerIndex], controllerRoot);
+                action(controller, layers[selectedLayerIndex], controllerScope);
             }
         }
 
@@ -178,43 +191,24 @@ namespace MVA.Toolbox.AnimationQueryTool
                 _ => null
             };
 
-            if (go == null || go == rootGo)
+            if (go == null)
             {
                 return null;
             }
 
-            Transform rootTransform = rootGo.transform;
-            Transform current = go.transform;
-            bool underRoot = false;
-            while (current != null)
-            {
-                if (current == rootTransform)
-                {
-                    underRoot = true;
-                    break;
-                }
-
-                current = current.parent;
-            }
-
-            if (!underRoot)
+            if (IsCurrentScopeRootObject(go))
             {
                 return null;
             }
 
-            if (_controllers != null && _controllers.Count > 0)
+            if (_controllers != null && _controllers.Count > 0 && !IsGameObjectInCurrentSelectionScope(go))
             {
-                current = go.transform.parent;
-                while (current != null && current != rootTransform)
-                {
-                    Animator animator = current.GetComponent<Animator>();
-                    if (animator != null && animator.runtimeAnimatorController is AnimatorController controller && !_controllers.Contains(controller))
-                    {
-                        return null;
-                    }
+                return null;
+            }
 
-                    current = current.parent;
-                }
+            if ((_controllers == null || _controllers.Count == 0) && !IsTransformUnderRoot(go.transform, rootGo.transform))
+            {
+                return null;
             }
 
             SkinnedMeshRenderer smrOnGo = go.GetComponent<SkinnedMeshRenderer>();
@@ -227,7 +221,130 @@ namespace MVA.Toolbox.AnimationQueryTool
                 }
             }
 
+            if (IsCurrentScopeRootObject(go))
+            {
+                return null;
+            }
+
             return go;
+        }
+
+        private bool IsGameObjectInCurrentSelectionScope(GameObject go)
+        {
+            if (go == null || _controllers == null || _controllers.Count == 0)
+            {
+                return false;
+            }
+
+            if (_selectedControllerIndex >= 0)
+            {
+                ControllerWithRoot selectedScope = SelectedControllerScope;
+                Transform selectedRoot = selectedScope.RootTransform ?? _targetRoot?.transform;
+                if (go.transform == selectedRoot)
+                {
+                    return false;
+                }
+
+                return IsTransformInControllerScope(go.transform, selectedRoot, selectedScope.IgnoresNestedAnimators);
+            }
+
+            for (int i = 0; i < _controllers.Count; i++)
+            {
+                AnimatorController controller = _controllers[i];
+                ControllerWithRoot controllerScope = GetControllerScope(controller);
+                Transform controllerRoot = controllerScope.RootTransform ?? _targetRoot?.transform;
+                if (go.transform == controllerRoot)
+                {
+                    continue;
+                }
+
+                if (IsTransformInControllerScope(go.transform, controllerRoot, controllerScope.IgnoresNestedAnimators))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsCurrentScopeRootObject(GameObject go)
+        {
+            if (go == null)
+            {
+                return false;
+            }
+
+            Transform goTransform = go.transform;
+            if (_controllers == null || _controllers.Count == 0)
+            {
+                return _targetRoot != null && goTransform == _targetRoot.transform;
+            }
+
+            if (_selectedControllerIndex >= 0)
+            {
+                Transform selectedRoot = SelectedControllerScope.RootTransform ?? _targetRoot?.transform;
+                return goTransform == selectedRoot;
+            }
+
+            return false;
+        }
+
+        private static bool IsTransformInControllerScope(Transform target, Transform controllerRoot)
+        {
+            return IsTransformInControllerScope(target, controllerRoot, false);
+        }
+
+        private static bool IsTransformInControllerScope(Transform target, Transform controllerRoot, bool ignoresNestedAnimators)
+        {
+            if (target == null || controllerRoot == null)
+            {
+                return false;
+            }
+
+            if (!ignoresNestedAnimators && target != controllerRoot && target.GetComponent<Animator>() != null)
+            {
+                return false;
+            }
+
+            Transform current = target;
+            while (current != null)
+            {
+                if (current == controllerRoot)
+                {
+                    return true;
+                }
+
+                Transform parent = current.parent;
+                if (!ignoresNestedAnimators && parent != null && parent != controllerRoot && parent.GetComponent<Animator>() != null)
+                {
+                    return false;
+                }
+
+                current = parent;
+            }
+
+            return false;
+        }
+
+        private static bool IsTransformUnderRoot(Transform target, Transform root)
+        {
+            if (target == null || root == null)
+            {
+                return false;
+            }
+
+            Transform current = target;
+            while (current != null)
+            {
+                if (current == root)
+                {
+                    return true;
+                }
+
+                current = current.parent;
+            }
+
+            return false;
         }
 
         private static GameObject FindAaoMergeOwnerForRendererUnderRoot(GameObject root, SkinnedMeshRenderer targetSmr)

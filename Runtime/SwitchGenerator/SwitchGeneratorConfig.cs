@@ -13,25 +13,13 @@ namespace MVA.Toolbox.SwitchGenerator
         public VRCAvatarDescriptor targetAvatar;
         public List<LayerConfig> layers = new List<LayerConfig>();
 
+        public bool IsActiveOnAvatarRoot => GetComponent<VRCAvatarDescriptor>() != null;
+
         public void OnValidate()
         {
             var descriptor = GetComponent<VRCAvatarDescriptor>();
-            if (descriptor == null)
-            {
-#if UNITY_EDITOR
-                UnityEditor.EditorApplication.delayCall += () =>
-                {
-                    if (this != null)
-                    {
-                        DestroyImmediate(this, true);
-                    }
-                };
-#endif
-                return;
-            }
-
-            targetAvatar = descriptor;
             layers ??= new List<LayerConfig>();
+            targetAvatar = descriptor;
 
             var usedLayerNames = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < layers.Count; i++)

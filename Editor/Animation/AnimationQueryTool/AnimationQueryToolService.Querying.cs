@@ -22,18 +22,15 @@ namespace MVA.Toolbox.AnimationQueryTool
                 return;
             }
 
-            if (!TryGetRelativePath(_selectedTransform, _targetRoot.transform, out _selectedPath))
-            {
-                return;
-            }
+            _selectedPath = null;
 
             Dictionary<(string path, string propertyName, Type type), EditorCurveBinding> uniqueBindings =
                 new Dictionary<(string path, string propertyName, Type type), EditorCurveBinding>();
             Dictionary<AnimatorController, string> controllerPathCache = new Dictionary<AnimatorController, string>();
 
-            ForEachLayerInScope((controller, layer, controllerRoot) =>
+            ForEachLayerInScope((controller, layer, controllerScope) =>
             {
-                if (!TryGetSelectedPathForController(controller, controllerRoot, controllerPathCache, out string relativePath))
+                if (!TryGetSelectedPathForController(controller, controllerScope.RootTransform, controllerScope.IgnoresNestedAnimators, controllerPathCache, out string relativePath))
                 {
                     return;
                 }
@@ -251,9 +248,9 @@ namespace MVA.Toolbox.AnimationQueryTool
             }
 
             Dictionary<AnimatorController, string> controllerPathCache = new Dictionary<AnimatorController, string>();
-            ForEachLayerInScope((controller, layer, controllerRoot) =>
+            ForEachLayerInScope((controller, layer, controllerScope) =>
             {
-                if (!TryGetSelectedPathForController(controller, controllerRoot, controllerPathCache, out string relativePath))
+                if (!TryGetSelectedPathForController(controller, controllerScope.RootTransform, controllerScope.IgnoresNestedAnimators, controllerPathCache, out string relativePath))
                 {
                     return;
                 }

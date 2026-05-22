@@ -11,9 +11,10 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
     {
         internal AnimatorController Controller;
         internal Transform RootTransform;
+        internal bool IgnoresNestedAnimators;
     }
 
-    internal static class AnimationControllerCollection
+    internal static class AnimatorControllerCollection
     {
         internal static AnimatorController GetExistingFXController(VRCAvatarDescriptor avatar)
         {
@@ -34,7 +35,11 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
             return null;
         }
 
-        internal static List<string> BuildControllerDisplayNames(VRCAvatarDescriptor descriptor, Animator animator, List<AnimatorController> controllers)
+        internal static List<string> BuildControllerDisplayNames(
+            VRCAvatarDescriptor descriptor,
+            Animator animator,
+            List<AnimatorController> controllers,
+            Dictionary<AnimatorController, ControllerWithRoot> controllerScopeMap = null)
         {
             List<string> names = new List<string>();
             if (controllers == null || controllers.Count == 0)
@@ -58,6 +63,10 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
                 }
 
                 string label = null;
+                bool prefersMergeAnimatorLabel = controllerScopeMap != null
+                    && controllerScopeMap.TryGetValue(controller, out ControllerWithRoot controllerScope)
+                    && controllerScope.IgnoresNestedAnimators;
+
                 if (descriptor != null)
                 {
                     VRCAvatarDescriptor.CustomAnimLayer[] baseLayers = descriptor.baseAnimationLayers ?? Array.Empty<VRCAvatarDescriptor.CustomAnimLayer>();
@@ -86,6 +95,11 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
                     }
                 }
 
+                if (label == null && prefersMergeAnimatorLabel)
+                {
+                    label = "MA Merge Animator: " + controller.name;
+                }
+
                 if (label == null && animator != null && animator.runtimeAnimatorController == controller)
                 {
                     label = "Animator: " + controller.name;
@@ -93,7 +107,7 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
 
                 if (string.IsNullOrEmpty(label))
                 {
-                    label = "Animator Controller: " + controller.name;
+                    label = "MA Merge Animator: " + controller.name;
                 }
 
                 names.Add(label);
@@ -112,22 +126,38 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
 
             VRCAvatarDescriptor descriptor = root.GetComponent<VRCAvatarDescriptor>();
             bool isAvatar = descriptor != null;
-            bool traversalAvatarMode = isAvatar && allowAnimatorSubtree;
-            HashSet<AnimatorController> seen = new HashSet<AnimatorController>();
+            Dictionary<AnimatorController, int> controllerIndices = new Dictionary<AnimatorController, int>();
             Transform rootTransform = root.transform;
+            Transform avatarRootTransform = FindAvatarRootTransform(rootTransform) ?? rootTransform;
 
-            void AddController(AnimatorController controller, Transform controllerRoot)
+            void AddController(AnimatorController controller, Transform controllerRoot, bool ignoresNestedAnimators = false)
             {
-                if (controller == null || controllerRoot == null || !seen.Add(controller))
+                if (controller == null || controllerRoot == null)
                 {
                     return;
                 }
 
-                result.Add(new ControllerWithRoot
+                ControllerWithRoot candidate = new ControllerWithRoot
                 {
                     Controller = controller,
-                    RootTransform = controllerRoot
-                });
+                    RootTransform = controllerRoot,
+                    IgnoresNestedAnimators = ignoresNestedAnimators
+                };
+
+                if (controllerIndices.TryGetValue(controller, out int existingIndex))
+                {
+                    ControllerWithRoot existing = result[existingIndex];
+                    if (!ShouldReplaceControllerScope(existing, candidate, rootTransform, isAvatar))
+                    {
+                        return;
+                    }
+
+                    result[existingIndex] = candidate;
+                    return;
+                }
+
+                controllerIndices[controller] = result.Count;
+                result.Add(candidate);
             }
 
             if (descriptor != null)
@@ -137,7 +167,7 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
                 {
                     if (baseLayers[i].animatorController is AnimatorController controller)
                     {
-                        AddController(controller, rootTransform);
+                        AddController(controller, rootTransform, false);
                     }
                 }
 
@@ -148,20 +178,98 @@ namespace MVA.Toolbox.Animation.Shared.Controllers
                     {
                         if (specialLayers[i].animatorController is AnimatorController controller)
                         {
-                            AddController(controller, rootTransform);
+                            AddController(controller, rootTransform, false);
                         }
                     }
                 }
             }
 
             Animator animator = root.GetComponent<Animator>();
-            if (animator != null && animator.runtimeAnimatorController is AnimatorController runtimeController)
+            bool preferMergeAnimatorForRootAnimator = !isAvatar && animator != null;
+            if (preferMergeAnimatorForRootAnimator)
             {
-                AddController(runtimeController, rootTransform);
+                AnimationModularAvatarControllerBridge.CollectMergeAnimatorControllersWithRoots(rootTransform, avatarRootTransform, isAvatar, allowAnimatorSubtree, AddController);
             }
 
-            AnimationModularAvatarControllerBridge.CollectMergeAnimatorControllersWithRoots(rootTransform, rootTransform, traversalAvatarMode, AddController);
+            if (animator != null && animator.runtimeAnimatorController is AnimatorController runtimeController)
+            {
+                AddController(runtimeController, rootTransform, false);
+            }
+
+            if (!preferMergeAnimatorForRootAnimator)
+            {
+                AnimationModularAvatarControllerBridge.CollectMergeAnimatorControllersWithRoots(rootTransform, avatarRootTransform, isAvatar, allowAnimatorSubtree, AddController);
+            }
+
             return result;
+        }
+
+        private static bool ShouldReplaceControllerScope(ControllerWithRoot existing, ControllerWithRoot candidate, Transform traversalRoot, bool isAvatar)
+        {
+            bool existingIsRootNonMma = !existing.IgnoresNestedAnimators && existing.RootTransform == traversalRoot;
+            bool candidateIsRootNonMma = !candidate.IgnoresNestedAnimators && candidate.RootTransform == traversalRoot;
+
+            if (candidate.IgnoresNestedAnimators && existingIsRootNonMma)
+            {
+                return candidate.RootTransform != traversalRoot || !isAvatar;
+            }
+
+            if (candidateIsRootNonMma && existing.IgnoresNestedAnimators)
+            {
+                return existing.RootTransform == traversalRoot && isAvatar;
+            }
+
+            int existingDepth = GetRelativeDepth(traversalRoot, existing.RootTransform);
+            int candidateDepth = GetRelativeDepth(traversalRoot, candidate.RootTransform);
+            if (candidateDepth != existingDepth)
+            {
+                return candidateDepth > existingDepth;
+            }
+
+            if (candidate.IgnoresNestedAnimators != existing.IgnoresNestedAnimators)
+            {
+                return candidate.IgnoresNestedAnimators;
+            }
+
+            return false;
+        }
+
+        private static int GetRelativeDepth(Transform root, Transform target)
+        {
+            if (root == null || target == null)
+            {
+                return int.MinValue;
+            }
+
+            int depth = 0;
+            Transform current = target;
+            while (current != null)
+            {
+                if (current == root)
+                {
+                    return depth;
+                }
+
+                current = current.parent;
+                depth++;
+            }
+
+            return -1;
+        }
+
+        private static Transform FindAvatarRootTransform(Transform current)
+        {
+            while (current != null)
+            {
+                if (current.GetComponent<VRCAvatarDescriptor>() != null)
+                {
+                    return current;
+                }
+
+                current = current.parent;
+            }
+
+            return null;
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MVA.Toolbox.Animation.Shared.Controllers;
+using MVA.Toolbox.Animation.Shared.SelectableRange;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
     {
         private readonly List<AnimatorController> _controllers = new List<AnimatorController>();
         private readonly List<string> _controllerNames = new List<string>();
-        private readonly Dictionary<AnimatorController, Transform> _controllerRootMap = new Dictionary<AnimatorController, Transform>();
+        private readonly Dictionary<AnimatorController, ControllerWithRoot> _controllerScopeMap = new Dictionary<AnimatorController, ControllerWithRoot>();
 
         private GameObject _targetRoot;
         private VRCAvatarDescriptor _avatarDescriptor;
@@ -65,6 +66,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
         private void OnDisable()
         {
             EditorApplication.hierarchyChanged -= HandleHierarchyChanged;
+            AnimationSelectableRangeHighlighter.Deactivate(this);
         }
 
         private void HandleHierarchyChanged()
@@ -83,7 +85,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 return;
             }
 
-            _service.SyncScope(_targetRoot, _controllers, _controllerRootMap, _selectedControllerIndex, _selectedLayerIndex);
+            _service.SyncScope(_targetRoot, _controllers, _controllerScopeMap, _selectedControllerIndex, _selectedLayerIndex);
 
             EditorGUILayout.Space(4f);
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
@@ -200,6 +202,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 }
 
                 _selectedLayerIndex = -1;
+                DrawSelectableRangeSection();
                 EditorGUILayout.EndVertical();
                 return;
             }
@@ -223,7 +226,13 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 }
             }
 
+            DrawSelectableRangeSection();
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawSelectableRangeSection()
+        {
+            AnimationSelectableRangeControls.Draw(this, BuildSelectableRangeInstanceIds);
         }
 
         private void DrawTrackingAndResults()
@@ -497,7 +506,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
 
             _controllers.Clear();
             _controllerNames.Clear();
-            _controllerRootMap.Clear();
+            _controllerScopeMap.Clear();
             _selectedControllerIndex = -1;
             _selectedLayerIndex = -1;
 
@@ -506,7 +515,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 return;
             }
 
-            List<ControllerWithRoot> entries = AnimationControllerCollection.CollectControllersWithRoot(_targetRoot, includeSpecialLayers: true, allowAnimatorSubtree: false);
+            List<ControllerWithRoot> entries = AnimatorControllerCollection.CollectControllersWithRoot(_targetRoot, includeSpecialLayers: true, allowAnimatorSubtree: true);
             for (int i = 0; i < entries.Count; i++)
             {
                 ControllerWithRoot entry = entries[i];
@@ -518,16 +527,17 @@ namespace MVA.Toolbox.AnimationRedirectTool
                 _controllers.Add(entry.Controller);
                 if (entry.RootTransform != null)
                 {
-                    _controllerRootMap[entry.Controller] = entry.RootTransform;
+                    _controllerScopeMap[entry.Controller] = entry;
                 }
             }
 
             if (_controllers.Count == 0)
             {
+                AnimationSelectableRangeHighlighter.Deactivate(this);
                 return;
             }
 
-            _controllerNames.AddRange(AnimationControllerCollection.BuildControllerDisplayNames(_avatarDescriptor, _animator, _controllers));
+            _controllerNames.AddRange(AnimatorControllerCollection.BuildControllerDisplayNames(_avatarDescriptor, _animator, _controllers, _controllerScopeMap));
             if (previousController != null)
             {
                 int previousIndex = _controllers.IndexOf(previousController);
@@ -541,7 +551,7 @@ namespace MVA.Toolbox.AnimationRedirectTool
 
             if (_avatarDescriptor != null)
             {
-                AnimatorController fxController = AnimationControllerCollection.GetExistingFXController(_avatarDescriptor);
+                AnimatorController fxController = AnimatorControllerCollection.GetExistingFXController(_avatarDescriptor);
                 if (fxController != null)
                 {
                     int fxIndex = _controllers.IndexOf(fxController);
@@ -558,15 +568,45 @@ namespace MVA.Toolbox.AnimationRedirectTool
 
         private void ClearTarget()
         {
+            AnimationSelectableRangeHighlighter.Deactivate(this);
             _targetRoot = null;
             _avatarDescriptor = null;
             _animator = null;
             _controllers.Clear();
             _controllerNames.Clear();
-            _controllerRootMap.Clear();
+            _controllerScopeMap.Clear();
             _selectedControllerIndex = -1;
             _selectedLayerIndex = -1;
-            _service?.SyncScope(null, Array.Empty<AnimatorController>(), new Dictionary<AnimatorController, Transform>(), -1, -1);
+            _service?.SyncScope(null, Array.Empty<AnimatorController>(), new Dictionary<AnimatorController, ControllerWithRoot>(), -1, -1);
+        }
+
+        private HashSet<int> BuildSelectableRangeInstanceIds()
+        {
+            if (_targetRoot == null)
+            {
+                return new HashSet<int>();
+            }
+
+            ControllerWithRoot scope = _service != null ? _service.CurrentSelectionScope : default;
+            if (scope.RootTransform == null)
+            {
+                AnimatorController controller = SelectedController;
+                if (controller != null && _controllerScopeMap.TryGetValue(controller, out ControllerWithRoot selectedScope) && selectedScope.RootTransform != null)
+                {
+                    scope = selectedScope;
+                }
+                else
+                {
+                    scope = new ControllerWithRoot
+                    {
+                        Controller = controller,
+                        RootTransform = _targetRoot.transform,
+                        IgnoresNestedAnimators = false
+                    };
+                }
+            }
+
+            return AnimationSelectableRangeUtility.CollectSelectableGameObjectInstanceIds(_targetRoot, new[] { scope });
         }
 
         private string[] BuildControllerOptions()

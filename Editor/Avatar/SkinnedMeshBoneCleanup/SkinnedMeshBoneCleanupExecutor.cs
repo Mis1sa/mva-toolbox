@@ -10,10 +10,7 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
         public static bool Execute(
             IEnumerable<Renderer> removeCandidates,
             IReadOnlyDictionary<Renderer, List<Transform>> exclusiveBones,
-            HashSet<Transform> protectedBones,
-            HashSet<Transform> allBones,
-            bool removeChildNonBoneObjects,
-            bool excludeForeignChildObjects)
+            HashSet<Transform> protectedBones)
         {
             var candidateList = removeCandidates?
                 .Where(renderer => renderer != null)
@@ -50,13 +47,7 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
                 }
             }
 
-            var context = new RemovalContext(
-                bonesToRemove,
-                protectedBones,
-                allBones,
-                removeChildNonBoneObjects,
-                excludeForeignChildObjects);
-            var extraRemovals = new HashSet<Transform>();
+            var context = new RemovalContext(bonesToRemove, protectedBones);
             var preservedNodes = new HashSet<Transform>();
 
             foreach (var bone in bonesToRemove)
@@ -66,13 +57,10 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
                     continue;
                 }
 
-                CollectChildActions(bone, context, extraRemovals, preservedNodes);
+                CollectChildActions(bone, context, preservedNodes);
             }
 
-            var nodesToRemove = new HashSet<Transform>(bonesToRemove);
-            nodesToRemove.UnionWith(extraRemovals);
-
-            ReleasePreservedNodes(preservedNodes, nodesToRemove);
+            ReleasePreservedNodes(preservedNodes, bonesToRemove);
 
             foreach (var renderer in candidateList)
             {
@@ -82,16 +70,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
                 }
 
                 Undo.DestroyObjectImmediate(renderer.gameObject);
-            }
-
-            foreach (var node in extraRemovals)
-            {
-                if (node == null)
-                {
-                    continue;
-                }
-
-                Undo.DestroyObjectImmediate(node.gameObject);
             }
 
             foreach (var bone in bonesToRemove)
@@ -112,7 +90,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
         private static void CollectChildActions(
             Transform bone,
             RemovalContext context,
-            HashSet<Transform> extraRemovals,
             HashSet<Transform> preservedNodes)
         {
             if (bone == null)
@@ -128,20 +105,13 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
                     continue;
                 }
 
+                preservedNodes.Add(child);
                 if (context.bonesToKeep.Contains(child) || HasRendererComponent(child))
                 {
-                    preservedNodes.Add(child);
                     continue;
                 }
 
-                if (ShouldRemoveChildObject(child, context))
-                {
-                    MarkSubtreeForRemoval(child, extraRemovals, context);
-                    continue;
-                }
-
-                preservedNodes.Add(child);
-                CollectChildActions(child, context, extraRemovals, preservedNodes);
+                CollectChildActions(child, context, preservedNodes);
             }
         }
 
@@ -176,73 +146,6 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
             return current;
         }
 
-        private static bool ShouldRemoveChildObject(Transform node, RemovalContext context)
-        {
-            if (!context.removeChildNonBoneObjects || node == null)
-            {
-                return false;
-            }
-
-            if (context.allBones.Contains(node) || HasRendererComponent(node))
-            {
-                return false;
-            }
-
-            if (context.excludeForeignChildObjects && ContainsProtectedElement(node, context))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        private static void MarkSubtreeForRemoval(Transform node, HashSet<Transform> extraRemovals, RemovalContext context)
-        {
-            if (node == null || extraRemovals.Contains(node))
-            {
-                return;
-            }
-
-            if (context.bonesToKeep.Contains(node))
-            {
-                return;
-            }
-
-            extraRemovals.Add(node);
-            for (int i = 0; i < node.childCount; i++)
-            {
-                var child = node.GetChild(i);
-                MarkSubtreeForRemoval(child, extraRemovals, context);
-            }
-        }
-
-        private static bool ContainsProtectedElement(Transform node, RemovalContext context)
-        {
-            var stack = new Stack<Transform>();
-            stack.Push(node);
-
-            while (stack.Count > 0)
-            {
-                var current = stack.Pop();
-                if (current == null)
-                {
-                    continue;
-                }
-
-                if (context.bonesToKeep.Contains(current) || HasRendererComponent(current))
-                {
-                    return true;
-                }
-
-                for (int i = 0; i < current.childCount; i++)
-                {
-                    stack.Push(current.GetChild(i));
-                }
-            }
-
-            return false;
-        }
-
         private static bool HasRendererComponent(Transform node)
         {
             return node != null && node.GetComponent<Renderer>() != null;
@@ -252,23 +155,14 @@ namespace MVA.Toolbox.SkinnedMeshBoneCleanup
         {
             internal RemovalContext(
                 HashSet<Transform> bonesToRemove,
-                HashSet<Transform> bonesToKeep,
-                HashSet<Transform> allBones,
-                bool removeChildNonBoneObjects,
-                bool excludeForeignChildObjects)
+                HashSet<Transform> bonesToKeep)
             {
                 this.bonesToRemove = bonesToRemove ?? new HashSet<Transform>();
                 this.bonesToKeep = bonesToKeep ?? new HashSet<Transform>();
-                this.allBones = allBones ?? new HashSet<Transform>();
-                this.removeChildNonBoneObjects = removeChildNonBoneObjects;
-                this.excludeForeignChildObjects = excludeForeignChildObjects;
             }
 
             internal HashSet<Transform> bonesToRemove { get; }
             internal HashSet<Transform> bonesToKeep { get; }
-            internal HashSet<Transform> allBones { get; }
-            internal bool removeChildNonBoneObjects { get; }
-            internal bool excludeForeignChildObjects { get; }
         }
     }
 }

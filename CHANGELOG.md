@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0] - 2026-05-22
+
+### Changed
+
+- AnimFix Utility：统一动画查询、动画重定向与默认值烘焙在 MMA 控制器下的范围解析与高亮逻辑。
+- Quick Remove Bones：移除子级非骨骼物体相关选项，固定仅清理独占骨骼并保留子级释放逻辑。
+
+### Fixed
+
+- AnimFix Utility：修复 MMA、根物体、子 Animator 与全部控制器模式下的多处范围判断异常，并修复 Switch Generator 在控制器筛选下的显示问题。
+
 ## [1.0.0-beta.1] - 2026-05-20
 
 ### Changed

@@ -26,12 +26,22 @@ namespace MVA.Toolbox.SwitchGenerator.Authoring
         {
             serializedObject.Update();
 
+            var cfg = (SwitchGeneratorConfig)target;
+            bool isActiveOnAvatarRoot = cfg != null && cfg.IsActiveOnAvatarRoot;
+
             EditorGUILayout.HelpBox("推荐使用菜单 Tools/MVA Toolbox/Avatar/开关生成 来编辑和设置配置。此组件主要用于查看和微调现有配置。", MessageType.Info);
+            if (!isActiveOnAvatarRoot)
+            {
+                EditorGUILayout.HelpBox("需要在Avatar的根对象上才可生效", MessageType.Warning);
+            }
 
             DrawAvatarInfo();
 
-            EditorGUILayout.Space();
-            DrawConfigList();
+            using (new EditorGUI.DisabledScope(!isActiveOnAvatarRoot))
+            {
+                EditorGUILayout.Space();
+                DrawConfigList();
+            }
 
             serializedObject.ApplyModifiedProperties();
         }
@@ -39,7 +49,7 @@ namespace MVA.Toolbox.SwitchGenerator.Authoring
         private void DrawAvatarInfo()
         {
             var cfg = (SwitchGeneratorConfig)target;
-            var avatar = cfg != null ? (cfg.targetAvatar != null ? cfg.targetAvatar : cfg.GetComponent<VRCAvatarDescriptor>()) : null;
+            var avatar = cfg != null ? cfg.GetComponent<VRCAvatarDescriptor>() : null;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Avatar", avatar != null ? avatar.gameObject.name : "(未绑定)");
@@ -272,9 +282,7 @@ namespace MVA.Toolbox.SwitchGenerator.Authoring
                 listProp.arraySize = 1;
 
             var cfg = (SwitchGeneratorConfig)target;
-            var avatar = cfg != null
-                ? (cfg.targetAvatar != null ? cfg.targetAvatar : cfg.GetComponent<VRCAvatarDescriptor>())
-                : null;
+            var avatar = cfg != null ? cfg.GetComponent<VRCAvatarDescriptor>() : null;
 
             for (int i = 0; i < listProp.arraySize; i++)
             {
@@ -377,9 +385,7 @@ namespace MVA.Toolbox.SwitchGenerator.Authoring
 
             collector.MarkEntrypoint();
 
-            var descriptor = component.targetAvatar != null
-                ? component.targetAvatar
-                : component.GetComponent<VRCAvatarDescriptor>();
+            var descriptor = component.GetComponent<VRCAvatarDescriptor>();
 
             if (descriptor != null)
             {

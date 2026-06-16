@@ -12,6 +12,7 @@ using MVA.Toolbox.AnimatorBlendTreeTool;
 using MVA.Toolbox.MaterialTextureReplaceTool;
 using MVA.Toolbox.PhysBoneCollisionOverlay;
 using MVA.Toolbox.FindReferencesTool;
+using MVA.Toolbox.FbxReplacement;
 using MVA.Toolbox.SyncCamera;
 
 namespace MVA.Toolbox.Editor
@@ -129,6 +130,12 @@ namespace MVA.Toolbox.Editor
         {
             Menu.SetChecked("Tools/MVA Toolbox/杂项/同步主摄像机到游戏窗口", SyncCameraTool.IsEnabled);
             return SyncCameraTool.ValidateMenu();
+        }
+
+        [MenuItem("Tools/MVA Toolbox/杂项/FBX替换", false, 53)]
+        private static void OpenFbxReplacementTool()
+        {
+            FbxReplacementWindow.Open();
         }
     }
 }

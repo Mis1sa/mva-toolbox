@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using MVA.Toolbox.Animation.Shared.Controllers;
 using UnityEditor.Animations;
@@ -32,7 +32,7 @@ namespace MVA.Toolbox.AnimationQueryTool
         private int _selectedLayerIndex = -1;
 
         private Object _selectedAnimatedObject;
-        private string _selectedPath;
+        // private string _selectedPath;
         private Transform _selectedTransform;
 
         private readonly List<PropertyGroupData> _availableGroups = new List<PropertyGroupData>();
@@ -110,7 +110,7 @@ namespace MVA.Toolbox.AnimationQueryTool
 
             _selectedAnimatedObject = normalized;
             _selectedTransform = (_selectedAnimatedObject as Component)?.transform ?? (_selectedAnimatedObject as GameObject)?.transform;
-            _selectedPath = null;
+            // _selectedPath = null;
             _availableGroups.Clear();
             _selectedGroupIndex = 0;
             _selectedBlendshapeOptionIndex = 0;
@@ -218,7 +218,7 @@ namespace MVA.Toolbox.AnimationQueryTool
         {
             _selectedAnimatedObject = null;
             _selectedTransform = null;
-            _selectedPath = null;
+            // _selectedPath = null;
             _availableGroups.Clear();
             _selectedGroupIndex = 0;
             _selectedBlendshapeOptionIndex = 0;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -22,7 +22,7 @@ namespace MVA.Toolbox.AnimationQueryTool
                 return;
             }
 
-            _selectedPath = null;
+            // _selectedPath = null;
 
             Dictionary<(string path, string propertyName, Type type), EditorCurveBinding> uniqueBindings =
                 new Dictionary<(string path, string propertyName, Type type), EditorCurveBinding>();
